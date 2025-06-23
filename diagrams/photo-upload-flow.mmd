@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant U as User
+    participant FE as Frontend
+    participant GW as API Gateway
+    participant MS as Media Service
+    participant CS as Cloud Storage
+    participant FS as Firestore
+    participant PS as Pub/Sub
+    participant AS as Analysis Service
+    participant VAI as Vertex AI
+    
+    U->>FE: 写真を選択
+    FE->>GW: Upload request
+    GW->>MS: Forward request
+    MS->>CS: 画像を保存
+    MS->>FS: メタデータ保存
+    MS->>PS: 分析タスク発行
+    PS->>AS: タスク通知
+    AS->>VAI: 画像分析依頼
+    VAI-->>AS: 分析結果
+    AS->>FS: 分析結果保存
+    AS-->>FE: 完了通知

@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant T as Timer/User
+    participant NS as Newsletter Service
+    participant FS as Firestore
+    participant VAI as Vertex AI
+    participant CS as Cloud Storage
+    participant N as Notification
+    
+    T->>NS: 生成リクエスト
+    NS->>FS: 期間内データ取得
+    FS-->>NS: 写真・分析結果
+    NS->>VAI: コンテンツ生成依頼
+    Note over NS,VAI: プロンプトと<br/>データを送信
+    VAI-->>NS: 生成されたコンテンツ
+    NS->>NS: テンプレート適用
+    NS->>CS: PDF/画像保存
+    NS->>FS: 連絡帳データ保存
+    NS->>N: ユーザー通知
