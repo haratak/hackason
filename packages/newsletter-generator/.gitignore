@@ -1,14 +1,45 @@
-node_modules/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv/
+ENV/
+env/
+*.egg-info/
 dist/
-*.log
-.DS_Store
+build/
+
+# Environment
 .env
 .env.local
-.env.*.local
-coverage/
+
+# IDE
 .vscode/
-*.pdf
-*.png
-*.jpg
-*.jpeg
-examples/output/
+.idea/
+*.swp
+*.swo
+*~
+
+# Output
+examples/output/*.json
+examples/output/*.html
+examples/output/*.pdf
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Temporary
+*.tmp
+*.log

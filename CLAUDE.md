@@ -9,6 +9,7 @@
 - **提供する価値や機能の実装に集中**してください
 
 ### 技術スタックの統一
+- Python 3.12 で統一
 - **クラウドサービスは全てGCPに統一**
   - Cloud Run, Cloud Storage, Firestore, Vertex AI など
   - AWS、Azure、その他のクラウドサービスは使用しない
@@ -19,6 +20,7 @@
   - 認証: Firebase Authentication（GCP傘下）
   - 監視: Cloud Monitoring
   - ログ: Cloud Logging
+
 
 ## Project Infrastructure
 
