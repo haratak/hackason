@@ -123,9 +123,6 @@ asyncio.run(main())
 # 開発環境のセットアップ
 make init
 
-# テストの実行（実装予定）
-make test
-
 # 出力ファイルのクリーンアップ
 make clean-output
 ```
