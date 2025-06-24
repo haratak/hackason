@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ newsletter.title }}</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="newsletter-container">
+        <header class="newsletter-header">
+            <h1>{{ newsletter.title }}</h1>
+            <p class="period">{{ date_range }}</p>
+            <p class="age">年齢: {{ newsletter.metadata.child_age|format_age }}</p>
+        </header>
+
+        <main class="newsletter-content">
+            {% for section in sections %}
+            <section class="newsletter-section section-{{ section.type }}">
+                <h2>{{ section.title }}</h2>
+                {% include section.template_name %}
+            </section>
+            {% endfor %}
+        </main>
+
+        <footer class="newsletter-footer">
+            <p class="generated-info">
+                生成日時: {{ newsletter.generated_at|format_date }}
+            </p>
+        </footer>
+    </div>
+</body>
+</html>
