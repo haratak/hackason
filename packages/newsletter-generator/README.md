@@ -10,7 +10,9 @@
 - 📅 期間に応じた動的なタイトル（週/月単位）
 - 🔍 RAGパターンによる関連記録の検索と活用
 
-## インストール
+## クイックスタート
+
+### インストール
 
 ```bash
 # Python 3.12環境のセットアップ
@@ -18,9 +20,24 @@ uv venv
 uv pip install -e .
 ```
 
-## 使い方
+### 環境変数の設定
 
-### 基本的な使い方
+```bash
+# Google API Key (必須)
+export GOOGLE_API_KEY=your-api-key
+```
+
+### 実行
+
+```bash
+# サンプルの実行
+make run
+
+# または直接実行
+uv run python examples/basic_example.py
+```
+
+## 基本的な使い方
 
 ```python
 import asyncio
@@ -64,16 +81,11 @@ async def main():
     # JSONとして出力
     json_str = exporter.to_json(newsletter)
     print(json_str)
-    
-    # ファイルに保存
-    exporter.save_json(newsletter, "output/newsletter.json")
 
 asyncio.run(main())
 ```
 
-## 出力形式
-
-生成されるJSONの構造:
+## 出力例
 
 ```json
 {
@@ -90,65 +102,20 @@ asyncio.run(main())
       "id": "sec-1",
       "type": "overview",
       "title": "今月の様子",
-      "order": 1,
       "content": {
-        "text": "太郎ちゃん（3歳0ヶ月）は今月も元気に...",
-        "metadata": {
-          "record_count": 30,
-          "record_ids": ["rec-001", "rec-002", ...]
-        }
-      }
-    },
-    {
-      "id": "sec-2",
-      "type": "favorite-play",
-      "title": "お気に入りの遊び",
-      "order": 3,
-      "content": {
-        "text": "ブロック遊びに夢中で...",
-        "photo_url": "gs://bucket/photos/photo-123.jpg",
-        "photo_description": "ブロック遊び"
-      }
-    },
-    {
-      "id": "sec-3",
-      "type": "first-time",
-      "title": "初めての体験",
-      "order": 4,
-      "content": {
-        "photo_url": "gs://bucket/photos/photo-456.jpg",
-        "caption": "初めてのボールキック！"
+        "text": "太郎ちゃん（3歳0ヶ月）は今月も元気に過ごしました..."
       }
     }
-  ],
-  "metadata": {
-    "child_age": {"years": 3, "months": 0},
-    "record_count": 30
-  },
-  "generated_at": "2025-06-25T12:34:56"
+  ]
 }
 ```
 
-## セクションタイプ
+## ドキュメント
 
-- **overview**: 全体の様子（テキストのみ）
-- **activities**: 活動記録（テキストのみ）
-- **favorite-play**: お気に入りの遊び（テキスト＋写真）
-- **growth-moment**: 成長の瞬間（テキスト＋写真）
-- **places-visited**: 訪れた場所（テキストのみ）
-- **first-time**: 初めての体験（写真＋キャプション）
-- **development**: できるようになったこと（テキストのみ）
-- **best-shot**: ベストショット（写真＋キャプション）
+詳細なドキュメントは以下を参照してください：
 
-## 環境変数
-
-```bash
-# Google API Key (必須)
-export GOOGLE_API_KEY=your-api-key
-
-# 使用するモデル (オプション、デフォルト: gemini-1.5-flash)
-export GEMINI_MODEL=gemini-1.5-flash
-```
+- [詳細README](docs/README.md) - 機能詳細、AI/LLM活用の説明、全体システムでの位置づけ
+- [アーキテクチャ](docs/ARCHITECTURE.md) - システム設計、クラス構成、拡張方法
 
 ## 開発
 
@@ -156,8 +123,8 @@ export GEMINI_MODEL=gemini-1.5-flash
 # 開発環境のセットアップ
 make init
 
-# サンプルの実行
-make run
+# テストの実行（実装予定）
+make test
 
 # 出力ファイルのクリーンアップ
 make clean-output
