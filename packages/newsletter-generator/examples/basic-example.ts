@@ -1,5 +1,6 @@
 import { NewsletterGenerator, NewsletterRenderer } from '../src';
-import type { GenerateParams, MediaAnalysis } from '../src/types';
+import type { GenerateParams } from '../src/types';
+import { MockRecordReader, createSampleChildcareRecords } from '../src/mock-record-reader';
 import * as dotenv from 'dotenv';
 
 // .envファイルを読み込み
@@ -7,60 +8,12 @@ dotenv.config();
 
 // サンプルデータを作成
 const createSampleData = (): GenerateParams => {
-  const now = new Date();
-  const mediaAnalyses: MediaAnalysis[] = [
-    {
-      mediaId: 'photo-001',
-      filePath: 'gs://bucket/photos/photo-001.jpg',
-      type: 'photo',
-      capturedAt: new Date('2024-01-15'),
-      expressions: [
-        { type: 'smile', confidence: 0.95 }
-      ],
-      actions: [
-        { type: 'sitting', confidence: 0.88 }
-      ],
-      objects: [
-        { name: 'toy_blocks', category: 'toy', confidence: 0.92 }
-      ]
-    },
-    {
-      mediaId: 'photo-002',
-      filePath: 'gs://bucket/photos/photo-002.jpg',
-      type: 'photo',
-      capturedAt: new Date('2024-01-20'),
-      expressions: [
-        { type: 'laugh', confidence: 0.90 }
-      ],
-      actions: [
-        { type: 'standing', confidence: 0.85 }
-      ],
-      objects: [
-        { name: 'ball', category: 'toy', confidence: 0.88 }
-      ]
-    },
-    {
-      mediaId: 'video-001',
-      filePath: 'gs://bucket/videos/video-001.mp4',
-      type: 'video',
-      capturedAt: new Date('2024-01-25'),
-      expressions: [
-        { type: 'smile', confidence: 0.87, timestamp: 2.5 }
-      ],
-      actions: [
-        { type: 'walking', confidence: 0.92, timestamp: 5.0 }
-      ],
-      videoSummary: '公園でボール遊びを楽しんでいる様子',
-      importantScenes: [
-        {
-          startTime: 3.0,
-          endTime: 7.0,
-          description: '初めてボールをキックできた瞬間',
-          significance: 'high'
-        }
-      ]
-    }
-  ];
+  // モック育児記録リーダーを作成
+  const mockReader = new MockRecordReader();
+  
+  // サンプル育児記録を追加
+  const sampleRecords = createSampleChildcareRecords();
+  mockReader.addRecords(sampleRecords);
 
   return {
     childProfile: {
@@ -74,10 +27,10 @@ const createSampleData = (): GenerateParams => {
       }
     },
     period: {
-      start: new Date('2024-01-01'),
+      start: new Date('2024-01-15'),
       end: new Date('2024-01-31')
     },
-    mediaAnalyses,
+    recordReader: mockReader,
     timeline: {
       childId: 'child-123',
       milestones: [
@@ -127,6 +80,7 @@ async function main() {
     const params = createSampleData();
 
     console.log('📝 連絡帳を生成中...');
+    console.log('- 育児記録から情報を読み込み中...');
     const newsletter = await generator.generate(params);
     
     console.log('\n✅ 連絡帳が生成されました:');
@@ -134,6 +88,7 @@ async function main() {
     console.log(`- タイトル: ${newsletter.title}`);
     console.log(`- セクション数: ${newsletter.sections.length}`);
     console.log(`- 期間: ${newsletter.period.start.toLocaleDateString()} ～ ${newsletter.period.end.toLocaleDateString()}`);
+    console.log(`- 使用した育児記録数: ${newsletter.metadata?.recordCount || 0}件`);
 
     // HTMLとして出力
     const outputPath = './examples/output';
@@ -149,12 +104,12 @@ async function main() {
     console.log('\n🔄 プロンプトで再生成中...');
     
     // 初回生成から少し間隔を空ける
-    console.log('⏳ レート制限回避のため5秒待機中...');
+    console.log('⏳ レート制限回避のため5秒彴機中...');
     await new Promise(resolve => setTimeout(resolve, 5000));
     
     const regenerated = await generator.regenerate({
       newsletter,
-      prompt: 'もっと具体的な成長の様子を詳しく記載してください'
+      prompt: '育児記録の具体的な観察内容をより詳しく記載してください'
     });
     
     console.log('✅ 再生成完了 (バージョン: ' + regenerated.version + ')');

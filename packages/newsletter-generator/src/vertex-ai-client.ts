@@ -1,5 +1,5 @@
 import { VertexAI } from '@google-cloud/vertexai';
-import { MediaAnalysis, ChildProfile, Timeline } from './types';
+import { ChildcareRecord, ChildProfile, Timeline } from './types';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -32,14 +32,14 @@ export class VertexAIClient {
   async generateSectionContent(
     sectionType: string,
     childProfile: ChildProfile,
-    mediaAnalyses: MediaAnalysis[],
+    records: ChildcareRecord[],
     timeline?: Timeline,
     customPrompt?: string
   ): Promise<string> {
     const prompt = this.buildPrompt(
       sectionType,
       childProfile,
-      mediaAnalyses,
+      records,
       timeline,
       customPrompt
     );
@@ -52,49 +52,35 @@ export class VertexAIClient {
   }
 
   /**
-   * 写真の選定とキャプション生成
+   * 育児記録からキャプションを生成
    */
-  async selectPhotoWithCaption(
-    sectionType: string,
-    mediaAnalyses: MediaAnalysis[],
-    context: string
-  ): Promise<{ mediaId: string; caption: string }> {
+  async generateCaption(
+    record: ChildcareRecord,
+    sectionType: string
+  ): Promise<string> {
     const prompt = `
-以下の写真・動画の分析結果から、「${sectionType}」セクションに最適な1枚を選んで、キャプションを生成してください。
+以下の育児記録から、「${sectionType}」セクションの写真キャプションを生成してください。
 
-コンテキスト: ${context}
+【育児記録】
+活動: ${record.activity.type} - ${record.activity.description}
+観察記録:
+${record.observations.map(o => `- ${o}`).join('\n')}
+${record.childState ? `\n子どもの様子:
+- 気分: ${record.childState.mood || '不明'}
+${record.childState.verbalExpressions ? `- 発した言葉: ${record.childState.verbalExpressions.join(', ')}` : ''}` : ''}
 
-分析結果:
-${JSON.stringify(mediaAnalyses, null, 2)}
+【指示】
+- 15-25文字程度の簡潔なキャプション
+- 記録の内容を要約し、温かみのある表現で
+- 記録にない情報は追加しない
 
-以下の形式で回答してください：
-選択したメディアID: [media_id]
-キャプション: [生成したキャプション]
-`;
+キャプションのみを出力してください。`;
 
-    try {
-      const text = await this.retryWithBackoff(async () => {
-        const result = await this.model.generateContent(prompt);
-        const response = result.response;
-        return response.candidates[0].content.parts[0].text;
-      }, 'selectPhotoWithCaption');
-
-      // レスポンスをパース（簡易実装）
-      const mediaIdMatch = text.match(/選択したメディアID: (.+)/);
-      const captionMatch = text.match(/キャプション: (.+)/);
-
-      return {
-        mediaId: mediaIdMatch?.[1] || mediaAnalyses[0].mediaId,
-        caption: captionMatch?.[1] || ''
-      };
-    } catch (error) {
-      console.error('Photo selection error:', error);
-      // フォールバック
-      return {
-        mediaId: mediaAnalyses[0].mediaId,
-        caption: ''
-      };
-    }
+    return this.retryWithBackoff(async () => {
+      const result = await this.model.generateContent(prompt);
+      const response = result.response;
+      return response.candidates[0].content.parts[0].text.trim();
+    }, 'generateCaption');
   }
 
   /**
@@ -175,19 +161,24 @@ ${userPrompt}
   private buildPrompt(
     sectionType: string,
     childProfile: ChildProfile,
-    mediaAnalyses: MediaAnalysis[],
+    records: ChildcareRecord[],
     timeline?: Timeline,
     customPrompt?: string
   ): string {
     const ageText = `${childProfile.currentAge.years}歳${childProfile.currentAge.months}ヶ月`;
 
     let basePrompt = `
-あなたは保育士の視点で、${childProfile.name}ちゃん（${ageText}）の成長記録を作成するアシスタントです。
+あなたは保育士の視点で、${childProfile.name}ちゃん（${ageText}）の連絡帳を作成するアシスタントです。
+
+【重要な指示】
+- 提供された育児記録のみを使用して文章を作成してください
+- 記録にない情報を創作したり、推測したりしないでください
+- 記録の内容を要約し、保護者に伝わりやすい形で表現してください
 
 【セクション】${sectionType}
 
-【今週の写真・動画の分析結果】
-${this.summarizeMediaAnalyses(mediaAnalyses)}
+【育児記録】
+${this.summarizeChildcareRecords(records)}
 
 【過去の成長記録】
 ${timeline ? this.summarizeTimeline(timeline) : '初回のため過去データなし'}
@@ -200,8 +191,9 @@ ${timeline ? this.summarizeTimeline(timeline) : '初回のため過去データ�
     basePrompt += `
 
 以下の点を考慮して、保護者が読んで嬉しくなるような文章を生成してください：
+- 記録に基づいた事実のみを記載
 - 客観的でありながら温かみのある表現
-- 具体的な成長の様子
+- 具体的な成長の様子（記録から読み取れる範囲で）
 - 年齢に応じた発達の視点
 - 200文字程度で簡潔に
 
@@ -211,21 +203,27 @@ ${timeline ? this.summarizeTimeline(timeline) : '初回のため過去データ�
   }
 
   /**
-   * メディア分析結果をサマライズ
+   * 育児記録をサマライズ
    */
-  private summarizeMediaAnalyses(mediaAnalyses: MediaAnalysis[]): string {
-    return mediaAnalyses.map(media => {
-      const expressions = media.expressions?.map(e => e.type).join(', ') || 'なし';
-      const actions = media.actions?.map(a => a.type).join(', ') || 'なし';
-      const objects = media.objects?.map(o => o.name).join(', ') || 'なし';
+  private summarizeChildcareRecords(records: ChildcareRecord[]): string {
+    if (records.length === 0) {
+      return '記録なし';
+    }
 
+    return records.map((record, index) => {
+      const date = new Date(record.timestamp);
+      const dateStr = `${date.getMonth() + 1}月${date.getDate()}日`;
+      
       return `
-- ${media.type === 'photo' ? '写真' : '動画'} (${media.capturedAt.toLocaleDateString()})
-  表情: ${expressions}
-  動作: ${actions}
-  物体: ${objects}
-  ${media.videoSummary ? `サマリー: ${media.videoSummary}` : ''}`;
-    }).join('\n');
+【記録${index + 1}】${dateStr} - ${record.activity.type}
+活動内容: ${record.activity.description}
+観察記録:
+${record.observations.map(o => `  - ${o}`).join('\n')}
+${record.childState ? `子どもの様子:
+  - 気分: ${record.childState.mood || '記録なし'}
+${record.childState.verbalExpressions?.length ? `  - 発した言葉: ${record.childState.verbalExpressions.join(', ')}` : ''}
+${record.childState.interactions?.length ? `  - 他児との関わり: ${record.childState.interactions.join(', ')}` : ''}` : ''}`;
+    }).join('\n\n');
   }
 
   /**

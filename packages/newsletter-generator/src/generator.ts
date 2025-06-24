@@ -2,11 +2,13 @@ import {
   GenerateParams,
   Newsletter,
   NewsletterSection,
+  NewsletterSectionConfig,
+  NewsletterLayout,
+  SectionContent,
   RegenerateParams,
   NewsletterGenerationError,
-  MediaAnalysis,
-  Timeline,
-  DetectedObject
+  ChildcareRecord,
+  Timeline
 } from './types';
 import { VertexAIClient } from './vertex-ai-client';
 import { TemplateEngine } from './template-engine';
@@ -30,23 +32,13 @@ export class NewsletterGenerator {
    */
   async generate(params: GenerateParams): Promise<Newsletter> {
     try {
-      // 1. 期間内のメディアを整理
-      const organizedMedia = this.organizeMediaByDate(params.mediaAnalyses);
+      // 1. セクションごとのコンテンツを生成
+      const sections = await this.generateSections(params);
       
-      // 2. 重要なイベントを抽出
-      const highlights = await this.extractHighlights(
-        params.mediaAnalyses,
-        params.timeline
-      );
+      // 2. 使用した記録のメディアIDを収集
+      const usedMediaIds = await this.collectUsedMediaIds(params, sections);
       
-      // 3. セクションごとのコンテンツを生成
-      const sections = await this.generateSections(
-        params,
-        organizedMedia,
-        highlights
-      );
-      
-      // 4. 連絡帳オブジェクトを構築
+      // 3. 連絡帳オブジェクトを構築
       const newsletter: Newsletter = {
         id: this.generateId(),
         childId: params.childProfile.id,
@@ -55,11 +47,13 @@ export class NewsletterGenerator {
         version: 1,
         title: this.generateTitle(params),
         sections,
-        usedMediaIds: this.extractUsedMediaIds(sections, params.mediaAnalyses),
+        usedMediaIds,
         generationPrompt: params.customPrompt,
         metadata: {
           childAge: params.childProfile.currentAge,
-          mediaCount: params.mediaAnalyses.length
+          recordCount: sections.reduce((acc, section) => 
+            acc + (section.metadata?.recordCount || 0), 0
+          )
         }
       };
 
@@ -119,107 +113,20 @@ export class NewsletterGenerator {
     }
   }
 
-  /**
-   * メディアを日付ごとに整理
-   */
-  private organizeMediaByDate(mediaAnalyses: MediaAnalysis[]): Map<string, MediaAnalysis[]> {
-    const organized = new Map<string, MediaAnalysis[]>();
-    
-    mediaAnalyses.forEach(media => {
-      const dateKey = format(media.capturedAt, 'yyyy-MM-dd');
-      const existing = organized.get(dateKey) || [];
-      organized.set(dateKey, [...existing, media]);
-    });
-    
-    return organized;
-  }
 
-  /**
-   * ハイライトを抽出
-   */
-  private async extractHighlights(
-    mediaAnalyses: MediaAnalysis[],
-    timeline?: Timeline
-  ): Promise<any[]> {
-    const highlights = [];
-    
-    // 笑顔が多い写真を抽出
-    const smilingPhotos = mediaAnalyses
-      .filter(m => m.expressions?.some(e => 
-        (e.type === 'smile' || e.type === 'laugh') && e.confidence > 0.8
-      ))
-      .sort((a, b) => {
-        const aMaxConfidence = Math.max(...(a.expressions?.map(e => e.confidence) || [0]));
-        const bMaxConfidence = Math.max(...(b.expressions?.map(e => e.confidence) || [0]));
-        return bMaxConfidence - aMaxConfidence;
-      });
-    
-    if (smilingPhotos.length > 0) {
-      highlights.push({
-        type: 'best_smile',
-        media: smilingPhotos[0],
-        reason: '最高の笑顔'
-      });
-    }
-    
-    // 新しい動作を検出
-    if (timeline) {
-      const existingActions = new Set(
-        timeline.milestones.map(m => m.type)
-      );
-      
-      const newActions = mediaAnalyses
-        .filter(m => m.actions?.some(a => 
-          a.confidence > 0.85 && !existingActions.has(a.type)
-        ));
-      
-      if (newActions.length > 0) {
-        highlights.push({
-          type: 'new_action',
-          media: newActions[0],
-          reason: '新しい動作の発見'
-        });
-      }
-    }
-    
-    // 重要なシーンがある動画
-    const importantVideos = mediaAnalyses
-      .filter(m => m.type === 'video' && 
-        m.importantScenes?.some(s => s.significance === 'high')
-      );
-    
-    importantVideos.forEach(video => {
-      highlights.push({
-        type: 'important_moment',
-        media: video,
-        reason: video.importantScenes?.[0].description || '重要な瞬間'
-      });
-    });
-    
-    return highlights;
-  }
 
   /**
    * セクションを生成
    */
   private async generateSections(
-    params: GenerateParams,
-    organizedMedia: Map<string, MediaAnalysis[]>,
-    highlights: any[]
+    params: GenerateParams
   ): Promise<NewsletterSection[]> {
-    // デフォルトのセクション構成
-    const sectionConfigs = [
-      { id: 'weekly-interest', title: '今週の興味', type: 'photo-with-text' as const },
-      { id: 'places-visited', title: '行った場所', type: 'text-only' as const },
-      { id: 'first-time', title: '初めての体験', type: 'photo-caption' as const },
-      { id: 'development', title: 'できるようになったこと', type: 'text-only' as const },
-      { id: 'best-shot', title: '今週のベストショット', type: 'photo-caption' as const }
-    ];
-
+    // レイアウト設定を取得
+    const layout = params.layout || this.getDefaultLayout();
     const sections: NewsletterSection[] = [];
     
-    for (let i = 0; i < sectionConfigs.length; i++) {
-      const config = sectionConfigs[i];
+    for (let i = 0; i < layout.sections.length; i++) {
+      const config = layout.sections[i];
       
       // セクション間に遅延を追加してレート制限を回避
       if (i > 0) {
@@ -228,15 +135,16 @@ export class NewsletterGenerator {
       
       const content = await this.generateSectionContent(
         config,
-        params,
-        organizedMedia,
-        highlights
+        params
       );
       
       sections.push({
-        ...config,
+        id: config.id,
+        type: config.type,
+        title: config.title || this.getSectionTitle(config.type),
         content,
-        order: i + 1
+        order: config.order,
+        metadata: content.metadata
       });
     }
 
@@ -247,105 +155,108 @@ export class NewsletterGenerator {
    * セクションのコンテンツを生成
    */
   private async generateSectionContent(
-    config: any,
-    params: GenerateParams,
-    organizedMedia: Map<string, MediaAnalysis[]>,
-    highlights: any[]
-  ): Promise<any> {
-    const allMedia = Array.from(organizedMedia.values()).flat();
+    config: NewsletterSectionConfig,
+    params: GenerateParams
+  ): Promise<SectionContent> {
+    // セクションタイプに応じた検索クエリを構築
+    const searchQuery = this.buildSearchQuery(config.type);
     
-    switch (config.id) {
-      case 'weekly-interest': {
-        // 今週の興味 - 物体認識から興味を分析
-        const objectsDetected = allMedia
-          .flatMap(m => m.objects || [])
-          .filter(o => o.confidence > 0.8);
-        
+    // 育児記録を検索
+    const records = await params.recordReader.searchRecords({
+      childId: params.childProfile.id,
+      dateRange: params.period,
+      query: searchQuery,
+      tags: this.getSearchTags(config.type),
+      limit: 30
+    });
+    
+    // 記録がない場合の処理
+    if (records.length === 0) {
+      return this.generateEmptyContent(config.type);
+    }
+    
+    // セクションタイプに応じたコンテンツ生成
+    switch (config.type) {
+      case 'overview':
+      case 'activities':
+      case 'places-visited':
+      case 'development': {
+        // テキストのみのセクション
         const text = await this.vertexAI.generateSectionContent(
-          config.title,
+          config.type,
           params.childProfile,
-          allMedia,
+          records,
           params.timeline,
-          '子供が興味を持った物や遊びについて、具体的なエピソードを交えて書いてください。'
-        );
-        
-        // 最も多く検出された物体の写真を選択
-        const mostFrequentObject = this.getMostFrequentObject(objectsDetected);
-        const selectedMedia = allMedia.find(m => 
-          m.objects?.some(o => o.name === mostFrequentObject)
+          this.getSectionInstruction(config.type)
         );
         
         return {
           text,
-          photoUrl: selectedMedia?.filePath || 'placeholder.jpg',
-          photoDescription: `${mostFrequentObject}で遊ぶ様子`
+          metadata: {
+            recordCount: records.length,
+            recordIds: records.map(r => r.id)
+          }
         };
       }
       
-      case 'places-visited': {
-        // 行った場所 - メタデータやシーンから場所を推測
+      case 'favorite-play':
+      case 'growth-moment': {
+        // 写真＋説明のセクション
         const text = await this.vertexAI.generateSectionContent(
-          config.title,
+          config.type,
           params.childProfile,
-          allMedia,
+          records,
           params.timeline,
-          '写真や動画から推測される場所（公園、自宅、外出先など）について書いてください。'
+          this.getSectionInstruction(config.type)
         );
         
-        return { text };
-      }
-      
-      case 'first-time': {
-        // 初めての体験
-        const firstTimeHighlight = highlights.find(h => h.type === 'new_action');
+        // 最も関連性の高い記録の写真を選択
+        const selectedRecord = this.selectBestRecord(records, config.type);
         
-        if (firstTimeHighlight) {
-          // 写真選定をスキップして、ハイライトの理由をそのまま使用
-          return {
-            photoUrl: firstTimeHighlight.media.filePath,
-            caption: firstTimeHighlight.reason
-          };
-        }
-        
-        // ハイライトがない場合は最新の写真を使用
-        const latestMedia = allMedia[allMedia.length - 1];
         return {
-          photoUrl: latestMedia?.filePath || 'placeholder.jpg',
-          caption: '新しい発見の毎日'
+          text,
+          photoUrl: selectedRecord?.mediaId ? 
+            `gs://bucket/photos/${selectedRecord.mediaId}.jpg` : 'placeholder.jpg',
+          photoDescription: selectedRecord?.activity.description || '',
+          metadata: {
+            recordCount: records.length,
+            recordIds: records.map(r => r.id),
+            selectedRecordId: selectedRecord?.id
+          }
         };
       }
       
-      case 'development': {
-        // できるようになったこと
-        const text = await this.vertexAI.generateSectionContent(
-          config.title,
-          params.childProfile,
-          allMedia,
-          params.timeline,
-          '動作認識の結果から、できるようになったことや成長の様子を具体的に書いてください。'
-        );
-        
-        return { text };
-      }
-      
+      case 'first-time':
       case 'best-shot': {
-        // 今週のベストショット
-        const bestSmile = highlights.find(h => h.type === 'best_smile');
-        const bestMedia = bestSmile?.media || allMedia[0];
+        // 写真＋キャプションのセクション
+        const selectedRecord = this.selectBestRecord(records, config.type);
         
-        if (bestMedia) {
-          // 写真選定をスキップして、事前に決められたキャプションを使用
+        if (!selectedRecord) {
           return {
-            photoUrl: bestMedia.filePath,
-            caption: bestSmile?.reason || '今週の素敵な笑顔'
+            photoUrl: 'placeholder.jpg',
+            caption: '素敵な瞬間',
+            metadata: { recordCount: 0 }
           };
         }
         
+        // 記録からキャプションを生成
+        const caption = await this.vertexAI.generateCaption(
+          selectedRecord,
+          config.type
+        );
+        
         return {
-          photoUrl: 'placeholder.jpg',
-          caption: '素敵な瞬間'
+          photoUrl: selectedRecord.mediaId ? 
+            `gs://bucket/photos/${selectedRecord.mediaId}.jpg` : 'placeholder.jpg',
+          caption,
+          metadata: {
+            recordCount: records.length,
+            recordIds: records.map(r => r.id),
+            selectedRecordId: selectedRecord.id
+          }
         };
       }
+      
       
       default:
         return {
@@ -356,18 +267,6 @@ export class NewsletterGenerator {
     }
   }
   
-  /**
-   * 最も頻出する物体を取得
-   */
-  private getMostFrequentObject(objects: DetectedObject[]): string {
-    const frequency = objects.reduce((acc, obj) => {
-      acc[obj.name] = (acc[obj.name] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    
-    return Object.entries(frequency)
-      .sort(([, a], [, b]) => b - a)[0]?.[0] || 'toy';
-  }
 
   /**
    * セクションを再生成
@@ -404,19 +303,24 @@ export class NewsletterGenerator {
   }
 
   /**
-   * 使用したメディアIDを抽出
+   * 使用したメディアIDを収集
    */
-  private extractUsedMediaIds(
-    sections: NewsletterSection[],
-    mediaAnalyses: MediaAnalysis[]
-  ): string[] {
-    const usedPaths = sections
-      .map(s => s.content.photoUrl)
-      .filter(url => url && url !== 'placeholder.jpg');
+  private async collectUsedMediaIds(
+    params: GenerateParams,
+    sections: NewsletterSection[]
+  ): Promise<string[]> {
+    const mediaIds: string[] = [];
     
-    return mediaAnalyses
-      .filter(m => usedPaths.includes(m.filePath))
-      .map(m => m.mediaId);
+    for (const section of sections) {
+      if (section.metadata?.selectedRecordId) {
+        const records = await params.recordReader.getRecordsByIds([section.metadata.selectedRecordId]);
+        if (records[0]?.mediaId) {
+          mediaIds.push(records[0].mediaId);
+        }
+      }
+    }
+    
+    return [...new Set(mediaIds)]; // 重複を除去
   }
 
   /**
@@ -424,5 +328,152 @@ export class NewsletterGenerator {
    */
   private generateId(): string {
     return `newsletter_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * セクションタイプに応じた検索クエリを構築
+   */
+  private buildSearchQuery(sectionType: string): string {
+    const queryMap: Record<string, string> = {
+      'overview': '',
+      'activities': '活動 遊び',
+      'favorite-play': '遊び 楽しい 好き',
+      'growth-moment': '成長 できた 初めて',
+      'places-visited': '場所 お散歩 外出',
+      'first-time': '初めて 新しい 挑戦',
+      'development': 'できた 成長 発達',
+      'best-shot': '笑顔 楽しい 素敵'
+    };
+    return queryMap[sectionType] || '';
+  }
+
+  /**
+   * セクションタイプに応じた検索タグを取得
+   */
+  private getSearchTags(sectionType: string): string[] {
+    const tagMap: Record<string, string[]> = {
+      'overview': [],
+      'activities': ['遊び', '活動'],
+      'favorite-play': ['遊び', '楽しい'],
+      'growth-moment': ['成長', '達成感'],
+      'places-visited': ['お散歩', '外出'],
+      'first-time': ['初めて', '新しい'],
+      'development': ['成長', '発達'],
+      'best-shot': ['笑顔', '楽しい']
+    };
+    return tagMap[sectionType] || [];
+  }
+
+  /**
+   * セクションタイプに応じた生成指示を取得
+   */
+  private getSectionInstruction(sectionType: string): string {
+    const instructionMap: Record<string, string> = {
+      'overview': '今週の全体的な様子を要約してください。提供された記録のみを使用し、新しい情報を追加しないでください。',
+      'activities': '今週行った活動について、記録から抽出して記述してください。',
+      'favorite-play': '子どもが特に楽しんでいた遊びについて、具体的な様子を記録から記述してください。',
+      'growth-moment': '成長が見られた瞬間について、記録から具体的に記述してください。',
+      'places-visited': '訪れた場所について、記録に基づいて記述してください。',
+      'first-time': '初めての体験について、記録から抽出して記述してください。',
+      'development': 'できるようになったことについて、記録から具体的に記述してください。',
+      'best-shot': '素敵な瞬間について簡潔に記述してください。'
+    };
+    return instructionMap[sectionType] || '記録に基づいて記述してください。';
+  }
+
+  /**
+   * 最適な記録を選択
+   */
+  private selectBestRecord(records: ChildcareRecord[], sectionType: string): ChildcareRecord | undefined {
+    if (records.length === 0) return undefined;
+    
+    // セクションタイプに応じた優先順位で選択
+    if (sectionType === 'first-time') {
+      // "初めて"タグがある記録を優先
+      const firstTimeRecord = records.find(r => r.tags.includes('初めて'));
+      if (firstTimeRecord) return firstTimeRecord;
+    }
+    
+    if (sectionType === 'best-shot') {
+      // "笑顔"タグがある記録を優先
+      const smileRecord = records.find(r => r.tags.includes('笑顔'));
+      if (smileRecord) return smileRecord;
+    }
+    
+    // メディアIDがある記録を優先
+    const withMedia = records.filter(r => r.mediaId);
+    if (withMedia.length > 0) return withMedia[0];
+    
+    // 最新の記録を返す
+    return records[0];
+  }
+
+  /**
+   * 空のコンテンツを生成
+   */
+  private generateEmptyContent(sectionType: string): SectionContent {
+    const emptyContentMap: Record<string, SectionContent> = {
+      'overview': { text: '今週の記録はありません。' },
+      'activities': { text: '今週の活動記録はありません。' },
+      'favorite-play': {
+        text: '今週の遊びの記録はありません。',
+        photoUrl: 'placeholder.jpg',
+        photoDescription: ''
+      },
+      'growth-moment': {
+        text: '今週の成長記録はありません。',
+        photoUrl: 'placeholder.jpg',
+        photoDescription: ''
+      },
+      'places-visited': { text: '今週の外出記録はありません。' },
+      'first-time': {
+        photoUrl: 'placeholder.jpg',
+        caption: '新しい体験の記録はありません。'
+      },
+      'development': { text: '今週の発達記録はありません。' },
+      'best-shot': {
+        photoUrl: 'placeholder.jpg',
+        caption: '今週の写真記録はありません。'
+      }
+    };
+    
+    return {
+      ...emptyContentMap[sectionType],
+      metadata: { recordCount: 0 }
+    };
+  }
+
+  /**
+   * セクションタイトルを取得
+   */
+  private getSectionTitle(sectionType: string): string {
+    const titleMap: Record<string, string> = {
+      'overview': '今週の様子',
+      'activities': '今週の活動',
+      'favorite-play': 'お気に入りの遊び',
+      'growth-moment': '成長の瞬間',
+      'places-visited': '行った場所',
+      'first-time': '初めての体験',
+      'development': 'できるようになったこと',
+      'best-shot': '今週のベストショット'
+    };
+    return titleMap[sectionType] || sectionType;
+  }
+
+  /**
+   * デフォルトレイアウトを取得
+   */
+  private getDefaultLayout(): NewsletterLayout {
+    return {
+      id: 'default',
+      name: 'デフォルトレイアウト',
+      sections: [
+        { id: 'sec-1', type: 'overview', order: 1 },
+        { id: 'sec-2', type: 'activities', order: 2 },
+        { id: 'sec-3', type: 'favorite-play', order: 3 },
+        { id: 'sec-4', type: 'first-time', order: 4 },
+        { id: 'sec-5', type: 'best-shot', order: 5 }
+      ]
+    };
   }
 }
