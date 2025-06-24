@@ -9,29 +9,29 @@
 ```mermaid
 graph TB
     subgraph "フロントエンド"
-        A[保育士アプリ<br/>Next.js/PWA] 
-        B[保護者アプリ<br/>Flutter]
+        A["保育士アプリ (Next.js/PWA)"] 
+        B["保護者アプリ (Flutter)"]
     end
     
     subgraph "バックエンド - Cloud Run"
-        C[写真アップロードAPI<br/>@ai-baby-journal/api]
-        D[メディア分析API<br/>@ai-baby-journal/api]
-        E[連絡帳生成API<br/>@ai-baby-journal/api]
+        C["写真アップロードAPI"]
+        D["メディア分析API"]
+        E["連絡帳生成API"]
     end
     
     subgraph "コアパッケージ"
-        F[メディア分析<br/>@ai-baby-journal/media-analyzer]
-        G[連絡帳生成<br/>@ai-baby-journal/newsletter-generator]
-        H[タイムライン管理<br/>@ai-baby-journal/timeline-manager]
+        F["メディア分析"]
+        G["連絡帳生成 (本パッケージ)"]
+        H["タイムライン管理"]
     end
     
     subgraph "ストレージ"
-        I[Cloud Storage<br/>写真・動画]
-        J[Firestore<br/>メタデータ・連絡帳]
+        I["Cloud Storage (写真・動画)"]
+        J["Firestore (メタデータ・連絡帳)"]
     end
     
     subgraph "AI/ML"
-        K[Vertex AI<br/>Gemini 1.5 Flash]
+        K["Vertex AI (Gemini 1.5 Flash)"]
     end
     
     A -->|写真アップロード| C
