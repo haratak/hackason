@@ -1,12 +1,3 @@
-# Claude
-.claude/
-
-# Node
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
 # Python
 __pycache__/
 *.py[cod]
@@ -24,7 +15,6 @@ build/
 # Environment
 .env
 .env.local
-.env.*.local
 
 # IDE
 .vscode/
@@ -33,10 +23,26 @@ build/
 *.swo
 *~
 
+# Claude
+.claude/
+
+# Output
+examples/output/*.json
+examples/output/*.html
+examples/output/*.pdf
+
 # OS
 .DS_Store
 Thumbs.db
 
-# Output
-*.log
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Temporary
 *.tmp
+*.log

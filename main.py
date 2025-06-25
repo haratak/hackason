@@ -1,5 +1,5 @@
 def main():
-    print("Hello from newsletter-generator!")
+    print("Hello from hackason!")
 
 
 if __name__ == "__main__":
