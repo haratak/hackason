@@ -1,16 +1,33 @@
-# mobile
+# 連絡帳クライアントアプリ
 
-A new Flutter project.
+## 概要
+連絡帳を管理するためのFlutterモバイルアプリケーションです。写真から連絡帳を作成し、管理することができます。
 
-## Getting Started
+## 主な機能
 
-This project is a starting point for a Flutter application.
+### ユーザー管理
+- ユーザー登録
+- ログイン/ログアウト
+- ユーザー認証
 
-A few resources to get you started if this is your first Flutter project:
+### 連絡帳管理
+- 写真のアップロード
+- アップロードした写真から連絡帳を作成
+- 写真と連絡帳の関連付けを視覚的に表示
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## 画面構成
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+### 1. 写真管理画面
+アップロードした写真の一覧を表示し、どの写真がどの連絡帳のソースとなっているかを確認できます。
+
+### 2. 連絡帳一覧画面
+作成済みの連絡帳を一覧表示します。
+
+### 3. 設定画面
+- ログアウト
+- その他の設定
+
+## 技術仕様
+- Flutter（最新版）
+- 状態管理：Provider
+- パッケージ：最新バージョンを使用
