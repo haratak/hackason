@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -72,6 +73,7 @@ class AuthProvider extends ChangeNotifier {
     } on Exception catch (e) {
       _isLoading = false;
       notifyListeners();
+      debugPrint('Google Sign-In failed: $e');
       throw Exception('Google Sign-In failed: $e');
     }
   }
@@ -89,6 +91,7 @@ class AuthProvider extends ChangeNotifier {
     } on Exception catch (e) {
       _isLoading = false;
       notifyListeners();
+      debugPrint('Sign out failed: $e');
       throw Exception('Sign out failed: $e');
     }
   }

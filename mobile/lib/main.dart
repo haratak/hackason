@@ -43,7 +43,7 @@ class AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
-    
+
     if (authProvider.isAuthenticated) {
       return const HomeScreen();
     } else {
