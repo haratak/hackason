@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2>Google Photosをスキャン</h2>
+    <p>Google Photosから子供の写真を検索します。写真の数によっては時間がかかる場合があります。</p>
+    
+    <button id="startScan" class="button">スキャン開始</button>
+    <a href="{{ url_for('upload') }}" class="button button-secondary">戻る</a>
+    
+    <div id="loading" class="loading" style="display: none;">
+        <div class="spinner"></div>
+        <p>写真をスキャン中...</p>
+        <p id="progress"></p>
+    </div>
+</div>
+
+<div id="results" style="display: none;">
+    <div class="card">
+        <h3>検索結果</h3>
+        <p id="resultSummary"></p>
+    </div>
+    
+    <div class="photo-grid" id="photoGrid"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const startScanButton = document.getElementById('startScan');
+const loading = document.getElementById('loading');
+const results = document.getElementById('results');
+const resultSummary = document.getElementById('resultSummary');
+const photoGrid = document.getElementById('photoGrid');
+const progress = document.getElementById('progress');
+
+startScanButton.addEventListener('click', async () => {
+    startScanButton.disabled = true;
+    loading.style.display = 'block';
+    results.style.display = 'none';
+    
+    try {
+        const response = await fetch('/api/scan_photos', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            displayResults(data.matched_photos);
+            resultSummary.textContent = `${data.total}枚の写真が見つかりました`;
+            results.style.display = 'block';
+        } else {
+            alert('エラー: ' + (data.error || 'スキャンに失敗しました'));
+        }
+    } catch (error) {
+        alert('エラー: ' + error.message);
+    } finally {
+        loading.style.display = 'none';
+        startScanButton.disabled = false;
+    }
+});
+
+function displayResults(photos) {
+    photoGrid.innerHTML = '';
+    
+    photos.sort((a, b) => b.similarity - a.similarity);
+    
+    photos.forEach(photo => {
+        const div = document.createElement('div');
+        div.className = 'photo-item';
+        div.innerHTML = `
+            <img src="${photo.baseUrl}=w400-h400" alt="${photo.filename}" loading="lazy">
+            <span class="similarity-badge">${(photo.similarity * 100).toFixed(0)}%</span>
+        `;
+        div.onclick = () => {
+            window.open(photo.baseUrl, '_blank');
+        };
+        photoGrid.appendChild(div);
+    });
+}
+
+// 定期的に進捗を更新（実際のAPIでは進捗情報を返すように改善可能）
+let progressInterval;
+let scannedCount = 0;
+
+function updateProgress() {
+    scannedCount += Math.floor(Math.random() * 10) + 5;
+    progress.textContent = `${scannedCount}枚の写真をチェック済み...`;
+}
+
+startScanButton.addEventListener('click', () => {
+    scannedCount = 0;
+    progressInterval = setInterval(updateProgress, 1000);
+});
+
+// スキャン完了時にインターバルをクリア
+const originalFetch = window.fetch;
+window.fetch = function(...args) {
+    return originalFetch.apply(this, args).then(response => {
+        if (args[0] === '/api/scan_photos') {
+            clearInterval(progressInterval);
+        }
+        return response;
+    });
+};
+</script>
+{% endblock %}
