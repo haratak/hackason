@@ -1,0 +1,82 @@
+{
+  "project_info": {
+    "project_number": "431161319367",
+    "project_id": "hackason-464007",
+    "storage_bucket": "hackason-464007.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:431161319367:android:8d1c8d79f34947a04003e2",
+        "android_client_info": {
+          "package_name": "com.example.hackason"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "431161319367-lup8pjvp2qp42k707pjc5i7rt9olo34o.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHzfjhppq3YBBkE0SRzE677-beXobKIFQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "431161319367-grt0tbg2ih21a5qrnsrvs0l43aqivkd3.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "431161319367-e19v0g8k7nbcsr392s59oabcaf3bd96r.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.hackason"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:431161319367:android:89886bdef37269fc4003e2",
+        "android_client_info": {
+          "package_name": "com.example.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "431161319367-lup8pjvp2qp42k707pjc5i7rt9olo34o.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHzfjhppq3YBBkE0SRzE677-beXobKIFQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "431161319367-grt0tbg2ih21a5qrnsrvs0l43aqivkd3.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "431161319367-e19v0g8k7nbcsr392s59oabcaf3bd96r.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.hackason"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

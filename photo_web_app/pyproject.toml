@@ -1,0 +1,27 @@
+[project]
+name = "photo-web-app"
+version = "0.1.0"
+description = "Google Photosから特定の子供の写真を自動検出するWebアプリケーション"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "flask>=3.0.0",
+    "google-auth>=2.23.4",
+    "google-auth-oauthlib>=1.1.0",
+    "google-auth-httplib2>=0.1.1",
+    "google-api-python-client>=2.108.0",
+    "google-cloud-aiplatform>=1.38.1",
+    "Pillow>=10.1.0",
+    "numpy>=1.24.3",
+    "python-dotenv>=1.0.0",
+    "gunicorn>=21.2.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4.3",
+    "pytest-cov>=4.1.0",
+    "black>=23.11.0",
+    "flake8>=6.1.0",
+    "mypy>=1.7.0",
+]

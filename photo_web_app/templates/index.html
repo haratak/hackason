@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2>ようこそ</h2>
+    <p>このシステムでは、Google Photosに保存されている写真の中から、特定の子供が写っている写真を自動的に見つけることができます。</p>
+    
+    <h3>使い方</h3>
+    <ol>
+        <li>Googleアカウントでログインし、Google Photosへのアクセスを許可します</li>
+        <li>対象となる子供の写真を3枚程度アップロードします</li>
+        <li>システムが顔の特徴を学習します</li>
+        <li>Google Photos内の写真をスキャンし、同じ子供が写っている写真を特定します</li>
+    </ol>
+    
+    {% if authenticated %}
+        <a href="{{ url_for('upload') }}" class="button">子供の写真をアップロード</a>
+        <a href="{{ url_for('logout') }}" class="button button-secondary">ログアウト</a>
+    {% else %}
+        <a href="{{ url_for('login') }}" class="button">Googleでログイン</a>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h3>プライバシーとセキュリティ</h3>
+    <ul>
+        <li>アップロードされた写真は顔特徴の抽出のみに使用され、保存されません</li>
+        <li>Google Photosの写真は読み取り専用でアクセスされます</li>
+        <li>顔認識データはセッション中のみ保持され、ログアウト時に削除されます</li>
+    </ul>
+</div>
+{% endblock %}

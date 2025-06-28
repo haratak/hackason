@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2>子供の写真をアップロード</h2>
+    <p>対象となる子供の写真を3枚程度アップロードしてください。顔がはっきりと写っている写真を選んでください。</p>
+    
+    <form id="uploadForm" enctype="multipart/form-data">
+        <div class="upload-area" id="uploadArea">
+            <p>ここに写真をドラッグ＆ドロップ<br>または</p>
+            <input type="file" id="fileInput" name="photos" multiple accept="image/*" style="display: none;">
+            <button type="button" class="button" onclick="document.getElementById('fileInput').click()">
+                ファイルを選択
+            </button>
+        </div>
+        
+        <div id="preview" class="photo-grid"></div>
+        
+        <div style="margin-top: 20px;">
+            <button type="submit" class="button" id="uploadButton" style="display: none;">
+                顔特徴を抽出
+            </button>
+            <a href="{{ url_for('index') }}" class="button button-secondary">戻る</a>
+        </div>
+    </form>
+    
+    <div id="result" style="display: none; margin-top: 20px;" class="card">
+        <h3>処理結果</h3>
+        <p id="resultMessage"></p>
+        <a href="{{ url_for('scan_photos') }}" class="button" id="scanButton" style="display: none;">
+            Google Photosをスキャン
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const uploadArea = document.getElementById('uploadArea');
+const fileInput = document.getElementById('fileInput');
+const preview = document.getElementById('preview');
+const uploadForm = document.getElementById('uploadForm');
+const uploadButton = document.getElementById('uploadButton');
+const result = document.getElementById('result');
+const resultMessage = document.getElementById('resultMessage');
+const scanButton = document.getElementById('scanButton');
+
+let selectedFiles = [];
+
+// ドラッグ＆ドロップ
+uploadArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadArea.classList.add('dragover');
+});
+
+uploadArea.addEventListener('dragleave', () => {
+    uploadArea.classList.remove('dragover');
+});
+
+uploadArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadArea.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+});
+
+// ファイル選択
+fileInput.addEventListener('change', (e) => {
+    handleFiles(e.target.files);
+});
+
+function handleFiles(files) {
+    selectedFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+    displayPreview();
+    uploadButton.style.display = selectedFiles.length > 0 ? 'inline-block' : 'none';
+}
+
+function displayPreview() {
+    preview.innerHTML = '';
+    selectedFiles.forEach((file, index) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const div = document.createElement('div');
+            div.className = 'photo-item';
+            div.innerHTML = `
+                <img src="${e.target.result}" alt="Preview ${index + 1}">
+            `;
+            preview.appendChild(div);
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+// アップロード処理
+uploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    if (selectedFiles.length === 0) {
+        alert('写真を選択してください');
+        return;
+    }
+    
+    const formData = new FormData();
+    selectedFiles.forEach(file => {
+        formData.append('photos', file);
+    });
+    
+    uploadButton.disabled = true;
+    uploadButton.textContent = '処理中...';
+    
+    try {
+        const response = await fetch('/upload_photos', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            resultMessage.textContent = data.message;
+            scanButton.style.display = 'inline-block';
+            result.style.display = 'block';
+        } else {
+            resultMessage.textContent = 'エラー: ' + (data.error || '処理に失敗しました');
+            result.style.display = 'block';
+        }
+    } catch (error) {
+        resultMessage.textContent = 'エラー: ' + error.message;
+        result.style.display = 'block';
+    } finally {
+        uploadButton.disabled = false;
+        uploadButton.textContent = '顔特徴を抽出';
+    }
+});
+</script>
+{% endblock %}
