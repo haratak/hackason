@@ -1,0 +1,10 @@
+{
+  "deployedIndexId": "media_analysis_1751159409638",
+  "queries": [{
+    "datapoint": {
+      "featureVector": [0.1, 0.2, 0.3, 0.4, 0.5]
+    },
+    "neighborCount": 5
+  }],
+  "returnFullDatapoint": false
+}
