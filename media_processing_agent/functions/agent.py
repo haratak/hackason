@@ -1,5 +1,4 @@
 from typing import Dict, Any
-from google.adk.agents import Agent
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timezone
@@ -43,7 +42,7 @@ _vector_search_index = None
 def get_firestore_client():
     global _db
     if _db is None:
-        _db = firestore.Client(project=get_project_id(), database="database")
+        _db = firestore.Client(project=get_project_id())
     return _db
 
 
@@ -62,8 +61,7 @@ def get_vector_search_index():
         index_id = get_index_id()
         if index_id:
             _vector_search_index = MatchingEngineIndex(
-                index_name=f"projects/{get_project_id()
-                                       }/locations/{get_location()}/indexes/{index_id}"
+                index_name=f"projects/{get_project_id()}/locations/{get_location()}/indexes/{index_id}"
             )
     return _vector_search_index
 
@@ -112,8 +110,7 @@ def objective_analyzer(media_uri: str) -> dict:
             # Default to image/jpeg if can't determine
             mime_type = "image/jpeg"
             logger.warning(
-                f"Could not determine MIME type from URL, defaulting to {
-                    mime_type}"
+                f"Could not determine MIME type from URL, defaulting to {mime_type}"
             )
 
         logger.info(f"Detected MIME type: {mime_type} for URL: {media_uri}")
@@ -231,6 +228,8 @@ def save_summary(
     media_source_uri: str,
     child_id: str = "",
     user_id: str = "",
+    media_upload_id: str = None,
+    captured_at = None,
 ) -> dict:
     """Save the episode log to Firestore"""
     try:
@@ -266,6 +265,16 @@ def save_summary(
         # Add user_id if provided
         if user_id:
             firestore_data["user_id"] = user_id
+            
+        # Add media_upload_id reference if provided
+        if media_upload_id:
+            firestore_data["media_upload_id"] = media_upload_id
+            
+        # Add captured_at if provided, otherwise use current time
+        if captured_at:
+            firestore_data["captured_at"] = captured_at
+        else:
+            firestore_data["captured_at"] = datetime.now(timezone.utc)
 
         # Save to Firestore
         db = get_firestore_client()
@@ -274,8 +283,7 @@ def save_summary(
         episode_id = doc_ref.id
 
         logger.info(
-            f"✅ Successfully stored episode in Firestore. Document ID: {
-                episode_id}"
+            f"✅ Successfully stored episode in Firestore. Document ID: {episode_id}"
         )
         return {
             "status": "success",
@@ -345,8 +353,7 @@ def index_media_analysis(
         vector = embeddings[0].values
 
         logger.info(
-            f"Upserting datapoint to Vector Search Index with ID: {
-                episode_id}..."
+            f"Upserting datapoint to Vector Search Index with ID: {episode_id}..."
         )
 
         # Get created_at timestamp as Unix timestamp (seconds since epoch)
@@ -369,8 +376,7 @@ def index_media_analysis(
             ]
         )
 
-        logger.info(f"✅ Successfully indexed episode {
-                    episode_id} for vector search")
+        logger.info(f"✅ Successfully indexed episode {episode_id} for vector search")
         return {
             "status": "success",
             "message": f"Episode indexed with ID: {episode_id}",
@@ -393,7 +399,8 @@ def set_child_id(child_id: str = ""):
 
 
 def process_media_for_cloud_function(
-    media_uri: str, user_id: str = "", child_id: str = ""
+    media_uri: str, user_id: str = "", child_id: str = "", 
+    media_upload_id: str = None, captured_at = None
 ) -> Dict[str, Any]:
     """
     Cloud Functionsから呼び出せる関数
@@ -416,7 +423,8 @@ def process_media_for_cloud_function(
 
         # 3. エピソードを保存
         save_result = save_summary(
-            episode_data, media_uri, child_id=child_id, user_id=user_id
+            episode_data, media_uri, child_id=child_id, user_id=user_id,
+            media_upload_id=media_upload_id, captured_at=captured_at
         )
         if save_result.get("status") != "success":
             return save_result
@@ -440,25 +448,26 @@ def process_media_for_cloud_function(
         return {"status": "error", "error_message": str(e)}
 
 
-root_agent = Agent(
-    name="episode_generator_agent",
-    model=MODEL_NAME,
-    description="メディアファイルを分析し、構造化されたエピソードログを生成するエージェント",
-    instruction="""あなたは、メディアファイルを客観的に分析し、ハイライトシーンを特定して構造化されたエピソードログを作成するエージェントです。
-
-処理の流れ：
-1. objective_analyzerでメディアファイルを分析
-2. highlight_identifierでハイライトを特定してエピソードログを作成
-3. save_summaryでFirestoreに保存（episode_idが返される）
-4. index_media_analysisで保存したエピソードをベクトル検索用にインデックス化（save_summaryで取得したepisode_idを使用）
-
-注意事項：
-- child_idは環境で設定されています（デフォルト: "demo"）
-- save_summaryの返り値にあるepisode_idを必ずindex_media_analysisに渡してください""",
-    tools=[
-        objective_analyzer,
-        highlight_identifier,
-        save_summary,
-        index_media_analysis,
-    ],
-)
+# ADK Agent initialization は Cloud Functions では不要
+# root_agent = Agent(
+#     name="episode_generator_agent",
+#     model=MODEL_NAME,
+#     description="メディアファイルを分析し、構造化されたエピソードログを生成するエージェント",
+#     instruction="""あなたは、メディアファイルを客観的に分析し、ハイライトシーンを特定して構造化されたエピソードログを作成するエージェントです。
+#
+# 処理の流れ：
+# 1. objective_analyzerでメディアファイルを分析
+# 2. highlight_identifierでハイライトを特定してエピソードログを作成
+# 3. save_summaryでFirestoreに保存（episode_idが返される）
+# 4. index_media_analysisで保存したエピソードをベクトル検索用にインデックス化（save_summaryで取得したepisode_idを使用）
+#
+# 注意事項：
+# - child_idは環境で設定されています（デフォルト: "demo"）
+# - save_summaryの返り値にあるepisode_idを必ずindex_media_analysisに渡してください""",
+#     tools=[
+#         objective_analyzer,
+#         highlight_identifier,
+#         save_summary,
+#         index_media_analysis,
+#     ],
+# )
