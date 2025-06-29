@@ -7,7 +7,7 @@ class LoginScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = Provider.of<AuthProvider>(context);
+    final authProvider = context.watch<AuthProvider>();
     
     return Scaffold(
       body: SafeArea(
@@ -46,11 +46,14 @@ class LoginScreen extends StatelessWidget {
                     onPressed: () async {
                       try {
                         await authProvider.signInWithGoogle();
-                      } on Exception catch (e) {
+                      } catch (e, stackTrace) {
+                        debugPrint('Login error: $e');
+                        debugPrint('Stack trace: $stackTrace');
+                        
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('ログインに失敗しました: $e'),
+                            const SnackBar(
+                              content: Text('ログインに失敗しました'),
                               backgroundColor: Colors.red,
                             ),
                           );

@@ -1,1 +1,34 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"hackason-464007","appId":"1:431161319367:android:89886bdef37269fc4003e2","fileOutput":"android/app/google-services.json"}},"ios":{"default":{"projectId":"hackason-464007","appId":"1:431161319367:ios:8f5fd244a480d8e84003e2","uploadDebugSymbols":false,"fileOutput":"ios/Runner/GoogleService-Info.plist"}},"dart":{"lib/firebase_options.dart":{"projectId":"hackason-464007","configurations":{"android":"1:431161319367:android:89886bdef37269fc4003e2","ios":"1:431161319367:ios:8f5fd244a480d8e84003e2"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "hackason-464007",
+          "appId": "1:431161319367:android:89886bdef37269fc4003e2",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "hackason-464007",
+          "appId": "1:431161319367:ios:8f5fd244a480d8e84003e2",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "hackason-464007",
+          "configurations": {
+            "android": "1:431161319367:android:89886bdef37269fc4003e2",
+            "ios": "1:431161319367:ios:8f5fd244a480d8e84003e2"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}
