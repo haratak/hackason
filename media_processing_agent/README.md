@@ -74,16 +74,6 @@ VERTEX_AI_INDEX_ID=your-index-id
 DEVELOPMENT_MODE=false
 ```
 
-### 4. ADK CLIのインストール
-
-```bash
-# 仮想環境内でADK CLIをインストール
-pip install google-genai-agent-dev-kit
-
-# インストール確認
-adk --version
-```
-
 ## 使用方法
 
 ### 1. ADK Webでの実行
