@@ -48,53 +48,69 @@ gcloud services enable cloudfunctions.googleapis.com \
     aiplatform.googleapis.com \
     eventarc.googleapis.com
 
-# Firestore Trigger Function のデプロイ
-echo -e "${YELLOW}Firestore Trigger Function をデプロイしています...${NC}"
-gcloud functions deploy process-media-upload-firestore \
-    --gen2 \
-    --runtime=python312 \
-    --region=$REGION \
+# Cloud Run Function のデプロイ
+echo -e "${YELLOW}Cloud Run Function をデプロイしています...${NC}"
+gcloud run deploy process-media-upload-firestore \
     --source=./cloud_functions \
-    --entry-point=process_media_upload_firestore \
-    --trigger-event-filters="type=google.cloud.firestore.document.v1.written" \
-    --trigger-event-filters="database=database" \
-    --trigger-event-filters-path-pattern="document=media_uploads/{docId}" \
-    --trigger-location=$REGION \
-    --memory=1GB \
+    --function=process_media_upload_firestore \
+    --region=$REGION \
+    --memory=1Gi \
     --timeout=540s \
     --max-instances=5 \
     --set-env-vars="GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GOOGLE_CLOUD_LOCATION=$REGION,VERTEX_AI_INDEX_ID=$VERTEX_AI_INDEX_ID,VERTEX_AI_INDEX_ENDPOINT_ID=$VERTEX_AI_INDEX_ENDPOINT_ID" \
     --service-account=$SERVICE_ACCOUNT
 
 if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✓ Cloud Function のデプロイが成功しました！${NC}"
-    echo ""
-    echo "デプロイ完了！"
-    echo ""
-    echo "次のステップ:"
-    echo ""
-    echo "1. Firestoreの media_uploads コレクションにドキュメントを作成:"
-    echo "   必須フィールド:"
-    echo "   - media_uri: メディアファイルのURI (gs:// または https://)"
-    echo "   - user_id: ユーザーID"
-    echo "   - child_id: 子供のID"
-    echo "   - processing_status: 'pending' (デフォルト)"
-    echo ""
-    echo "2. 自動的にCloud Functionがトリガーされ:"
-    echo "   - processing_status が 'processing' に更新"
-    echo "   - メディア分析を実行"
-    echo "   - episodes コレクションにエピソードを作成"
-    echo "   - processing_status が 'completed' に更新"
-    echo "   - episode_id フィールドが追加"
-    echo ""
-    echo "3. ログを確認:"
-    echo "   gcloud functions logs read process-media-upload-firestore --region=$REGION"
-    echo ""
-    echo "4. 結果の確認:"
-    echo "   - media_uploadsコレクション: 処理状態とepisode_id"
-    echo "   - episodesコレクション: 生成されたエピソード"
-    echo "   - processing_logsコレクション: 処理ログ"
+    echo -e "${GREEN}✓ Cloud Run Function のデプロイが成功しました！${NC}"
+    
+    # プロジェクト番号を取得
+    PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+    
+    # Eventarc トリガーの作成
+    echo -e "${YELLOW}Eventarc トリガーを作成しています...${NC}"
+    gcloud eventarc triggers create firestore-media-upload-trigger \
+        --location=$REGION \
+        --destination-run-service=process-media-upload-firestore \
+        --destination-run-region=$REGION \
+        --event-filters="type=google.cloud.firestore.document.v1.written" \
+        --event-filters="database=database" \
+        --event-data-content-type="application/protobuf" \
+        --event-filters-path-pattern="document=media_uploads/{docId}" \
+        --service-account="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ Eventarc トリガーの作成が成功しました！${NC}"
+    else
+        echo -e "${YELLOW}⚠ Eventarc トリガーの作成に失敗しました。手動で作成してください。${NC}"
+    fi
 else
-    echo -e "${RED}✗ デプロイに失敗しました${NC}"
+    echo -e "${RED}✗ Cloud Run Function のデプロイに失敗しました${NC}"
     exit 1
 fi
+
+echo ""
+echo "デプロイ完了！"
+echo ""
+echo "次のステップ:"
+echo ""
+echo "1. Firestoreの media_uploads コレクションにドキュメントを作成:"
+echo "   必須フィールド:"
+echo "   - media_uri: メディアファイルのURI (gs:// または https://)"
+echo "   - user_id: ユーザーID"
+echo "   - child_id: 子供のID"
+echo "   - processing_status: 'pending' (デフォルト)"
+echo ""
+echo "2. 自動的にCloud Run Functionがトリガーされ:"
+echo "   - processing_status が 'processing' に更新"
+echo "   - メディア分析を実行"
+echo "   - episodes コレクションにエピソードを作成"
+echo "   - processing_status が 'completed' に更新"
+echo "   - episode_id フィールドが追加"
+echo ""
+echo "3. ログを確認:"
+echo "   gcloud run logs read process-media-upload-firestore --region=$REGION"
+echo ""
+echo "4. 結果の確認:"
+echo "   - media_uploadsコレクション: 処理状態とepisode_id"
+echo "   - episodesコレクション: 生成されたエピソード"
+echo "   - processing_logsコレクション: 処理ログ"

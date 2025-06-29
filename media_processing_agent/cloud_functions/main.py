@@ -128,19 +128,20 @@ def process_media_upload(request):
         }, 500
 
 
+from cloudevents.http import from_http
+from flask import Request
+from google.events.cloud import firestore as firestore_events
+
+
 @functions_framework.cloud_event
 def process_media_upload_firestore(cloud_event):
     """Firestoreトリガーでメディア処理を実行"""
-    # デバッグ: イベント全体をログ出力
-    print(f"Cloud Event Type: {cloud_event['type']}")
-    print(f"Cloud Event Subject: {cloud_event.get('subject', 'N/A')}")
+    # Firestoreイベントをパース
+    firestore_payload = firestore_events.DocumentEventData()
+    firestore_payload._pb.ParseFromString(cloud_event.data)
     
-    # イベントデータの全体構造を取得
-    event_data = cloud_event.data
-    print(f"Event data keys: {list(event_data.keys())}")
-    
-    # ドキュメントパスを取得
-    document_name = event_data.get("name", "")
+    # ドキュメントパスから情報を抽出
+    document_name = firestore_payload.value.name
     print(f"Event triggered for document: {document_name}")
     
     # パスから情報を抽出（例: projects/{project}/databases/{database}/documents/media_uploads/{docId}）
@@ -150,27 +151,35 @@ def process_media_upload_firestore(cloud_event):
     
     # ドキュメントIDを抽出
     doc_id = document_name.split("/media_uploads/")[-1]
-    
     print(f"Function triggered for media_uploads document: {doc_id}")
     
     # oldValueがある場合は更新なのでスキップ（新規作成のみ処理）
-    if "oldValue" in event_data and event_data["oldValue"]:
+    if firestore_payload.old_value:
         print("Skipping update event (only processing create events)")
         return
     
-    # valueフィールドからドキュメントデータを取得
-    value = event_data.get("value", {})
-    if not value:
-        print("No value in event data")
+    # 新しいドキュメントのデータを取得
+    if not firestore_payload.value:
+        print("No document data found")
         return
-        
-    fields = value.get("fields", {})
+    
+    # ドキュメントフィールドを辞書形式に変換
+    fields = {}
+    for field_name, field_value in firestore_payload.value.fields.items():
+        if hasattr(field_value, 'string_value'):
+            fields[field_name] = field_value.string_value
+        elif hasattr(field_value, 'integer_value'):
+            fields[field_name] = field_value.integer_value
+        elif hasattr(field_value, 'double_value'):
+            fields[field_name] = field_value.double_value
+        elif hasattr(field_value, 'boolean_value'):
+            fields[field_name] = field_value.boolean_value
     
     # 必要なフィールドを抽出
-    media_uri = fields.get("media_uri", {}).get("stringValue", "")
-    user_id = fields.get("user_id", {}).get("stringValue", "")
-    child_id = fields.get("child_id", {}).get("stringValue", "")
-    processing_status = fields.get("processing_status", {}).get("stringValue", "pending")
+    media_uri = fields.get("media_uri", "")
+    user_id = fields.get("user_id", "")
+    child_id = fields.get("child_id", "")
+    processing_status = fields.get("processing_status", "pending")
     
     # 既に処理済みまたは処理中の場合はスキップ
     if processing_status in ["processing", "completed"]:
