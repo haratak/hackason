@@ -1,0 +1,5 @@
+functions-framework==3.*
+google-cloud-firestore>=2.21.0
+google-cloud-aiplatform==1.71.1
+vertexai==1.71.1
+python-dotenv>=1.1.1
