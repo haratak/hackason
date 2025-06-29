@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mobile/providers/auth_provider.dart';
+import 'package:mobile/screens/family_screen.dart';
 import 'package:provider/provider.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -19,6 +20,19 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.person),
             title: const Text('アカウント'),
             subtitle: Text(authProvider.user?.email ?? ''),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.family_restroom),
+            title: const Text('ファミリー設定'),
+            subtitle: const Text('ファミリーとお子様の情報を管理'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const FamilyScreen()),
+              );
+            },
           ),
           const Divider(),
           ListTile(
