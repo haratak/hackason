@@ -63,6 +63,108 @@ def get_embedding_model():
     return _embedding_model
 
 
+def search_similar_episodes(
+    query_embedding: List[float],
+    child_id: str,
+    start_date: datetime,
+    end_date: datetime,
+    top_k: int = 10
+) -> List[Dict[str, Any]]:
+    """
+    ベクトル検索でエピソードを取得
+    
+    Args:
+        query_embedding: 検索クエリの埋め込みベクトル
+        child_id: 子供のID
+        start_date: 開始日時
+        end_date: 終了日時
+        top_k: 取得する上位件数
+        
+    Returns:
+        類似エピソードのリスト
+    """
+    try:
+        from google.cloud import aiplatform_v1
+        
+        # Matching Engine Index Endpoint クライアントを作成
+        index_endpoint_client = aiplatform_v1.MatchingEngineIndexEndpointServiceClient()
+        
+        # Index Endpoint のリソース名を構築
+        index_endpoint_name = (
+            f"projects/{PROJECT_ID}/locations/{LOCATION}/"
+            f"indexEndpoints/{INDEX_ENDPOINT_ID}"
+        )
+        
+        # 日付をUnixタイムスタンプに変換
+        start_timestamp = int(start_date.timestamp())
+        end_timestamp = int(end_date.timestamp())
+        
+        # 検索リクエストを構築
+        deployed_index_id = "deployed_index"  # デプロイされたインデックスのID
+        
+        # 検索を実行
+        response = index_endpoint_client.find_neighbors(
+            request={
+                "index_endpoint": index_endpoint_name,
+                "deployed_index_id": deployed_index_id,
+                "queries": [{
+                    "datapoint": {
+                        "feature_vector": query_embedding,
+                        "restricts": [{
+                            "namespace": "child_id",
+                            "allow_list": [child_id]
+                        }],
+                        "numeric_restricts": [
+                            {
+                                "namespace": "created_at",
+                                "value_int": start_timestamp,
+                                "op": "GREATER_EQUAL"
+                            },
+                            {
+                                "namespace": "created_at", 
+                                "value_int": end_timestamp,
+                                "op": "LESS_EQUAL"
+                            }
+                        ]
+                    },
+                    "neighbor_count": top_k
+                }]
+            }
+        )
+        
+        # 結果からエピソードIDを抽出
+        episode_ids = []
+        if response.nearest_neighbors:
+            for neighbor in response.nearest_neighbors[0].neighbors:
+                episode_ids.append(neighbor.datapoint.datapoint_id)
+        
+        # Firestoreからエピソード情報を取得
+        if episode_ids:
+            db = get_firestore_client()
+            episodes = []
+            
+            for episode_id in episode_ids:
+                doc = db.collection('episodes').document(episode_id).get()
+                if doc.exists:
+                    episode_data = doc.to_dict()
+                    episodes.append({
+                        'id': episode_id,
+                        'content': episode_data.get('content', ''),
+                        'tags': episode_data.get('vector_tags', []),
+                        'media_source_uri': episode_data.get('media_source_uri', ''),
+                        'created_at': episode_data.get('created_at'),
+                        'emotion': episode_data.get('emotion', '')
+                    })
+            
+            return episodes
+        
+        return []
+        
+    except Exception as e:
+        logger.error(f"Error in vector search: {str(e)}")
+        return []
+
+
 # ========== ツール関数 ==========
 
 
@@ -257,10 +359,35 @@ def collect_episodes_by_theme(
                             }
                         )
 
-        # TODO: 実際の実装では、ベクトル検索を使用してより関連性の高いエピソードを取得
-        # embedding_model = get_embedding_model()
-        # query_embedding = embedding_model.get_embeddings([theme_info['title']])[0].values
-        # similar_episodes = search_similar_episodes(query_embedding, child_id, start, end)
+        # ベクトル検索を使用してより関連性の高いエピソードを取得
+        if INDEX_ID and INDEX_ENDPOINT_ID:
+            try:
+                # テーマに基づいてクエリを構築
+                search_query = f"{theme_info['title']} {' '.join(theme_info.get('search_queries', []))}"
+                
+                # 埋め込みを生成
+                embedding_model = get_embedding_model()
+                embeddings = embedding_model.get_embeddings([search_query])
+                query_embedding = embeddings[0].values
+                
+                # ベクトル検索を実行
+                vector_episodes = search_similar_episodes(
+                    query_embedding=query_embedding,
+                    child_id=child_id,
+                    start_date=start,
+                    end_date=end,
+                    top_k=10  # 上位10件を取得
+                )
+                
+                # ベクトル検索結果をマージ（重複を除去）
+                existing_ids = {ep['id'] for ep in episodes}
+                for vec_episode in vector_episodes:
+                    if vec_episode['id'] not in existing_ids:
+                        episodes.append(vec_episode)
+                
+                logger.info(f"Vector search found {len(vector_episodes)} episodes for theme {theme_info['title']}")
+            except Exception as e:
+                logger.warning(f"Vector search failed, using text search only: {str(e)}")
 
         return {
             "status": "success",
