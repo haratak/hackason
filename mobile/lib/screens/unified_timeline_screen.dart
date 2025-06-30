@@ -326,42 +326,49 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
                         );
                       }
                       
-                      return Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          if (mediaUpload.mediaType == MediaType.video)
-                            Container(
-                              color: Colors.black,
+                      if (mediaUpload.mediaType == MediaType.video) {
+                        // Video placeholder with play button
+                        return Container(
+                          color: Colors.black87,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Icon(
+                                Icons.videocam,
+                                color: Colors.grey[600],
+                                size: 36,
+                              ),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.9),
+                                  shape: BoxShape.circle,
+                                ),
+                                padding: const EdgeInsets.all(8),
+                                child: const Icon(
+                                  Icons.play_arrow,
+                                  color: Colors.black87,
+                                  size: 24,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      } else {
+                        // Image thumbnail
+                        return Image.network(
+                          snapshot.data!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: Colors.grey[300],
                               child: const Icon(
-                                Icons.video_library,
-                                color: Colors.white,
-                                size: 32,
+                                Icons.broken_image,
+                                color: Colors.grey,
                               ),
-                            )
-                          else
-                            Image.network(
-                              snapshot.data!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  color: Colors.grey[300],
-                                  child: const Icon(
-                                    Icons.broken_image,
-                                    color: Colors.grey,
-                                  ),
-                                );
-                              },
-                            ),
-                          if (mediaUpload.mediaType == MediaType.video)
-                            const Positioned.fill(
-                              child: Icon(
-                                Icons.play_circle_outline,
-                                color: Colors.white,
-                                size: 40,
-                              ),
-                            ),
-                        ],
-                      );
+                            );
+                          },
+                        );
+                      }
                     },
                   ),
                 ),
@@ -453,20 +460,6 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    // Content preview
-                    if (episode != null && episode.content != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          episode.content!,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[700],
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
                   ],
                 ),
               ),
@@ -485,21 +478,6 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
     } catch (e) {
       debugPrint('Error getting download URL: $e');
       rethrow;
-    }
-  }
-  
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date);
-    
-    if (difference.inDays == 0) {
-      return '今日';
-    } else if (difference.inDays == 1) {
-      return '昨日';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays}日前';
-    } else {
-      return '${date.year}年${date.month}月${date.day}日';
     }
   }
   

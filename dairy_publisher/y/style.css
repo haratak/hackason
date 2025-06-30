@@ -1,0 +1,151 @@
+/* リセットと基本設定 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f8f9fa;
+}
+
+/* コンテナ */
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* ヘッダー */
+header {
+    text-align: center;
+    padding: 40px 0;
+    background-color: #fff;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    margin-bottom: 30px;
+}
+
+header h1 {
+    font-size: 2.5em;
+    color: #FF6B6B;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    color: #666;
+    font-size: 1.1em;
+}
+
+/* メインコンテンツ */
+main {
+    background-color: #fff;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    padding: 30px;
+}
+
+/* セクション共通 */
+section {
+    margin-bottom: 40px;
+}
+
+section:last-child {
+    margin-bottom: 0;
+}
+
+section h2 {
+    font-size: 1.8em;
+    color: #4ECDC4;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #4ECDC4;
+}
+
+/* ストーリーセクション */
+.story-content {
+    background-color: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+}
+
+.story-content p {
+    margin-bottom: 15px;
+}
+
+.story-content p:last-child {
+    margin-bottom: 0;
+}
+
+/* 写真セクション */
+.photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+}
+
+.photo-item {
+    text-align: center;
+}
+
+.photo-item img {
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.photo-caption {
+    margin-top: 10px;
+    font-size: 0.9em;
+    color: #666;
+}
+
+/* メッセージセクション */
+.message-content {
+    background-color: #FFE66D;
+    padding: 25px;
+    border-radius: 8px;
+    position: relative;
+}
+
+.message-content p {
+    margin-bottom: 15px;
+}
+
+.message-author {
+    text-align: right;
+    font-style: italic;
+    color: #666;
+    margin-bottom: 0 !important;
+}
+
+/* フッター */
+footer {
+    text-align: center;
+    padding: 30px 0;
+    color: #666;
+    font-size: 0.9em;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 600px) {
+    header h1 {
+        font-size: 2em;
+    }
+    
+    section h2 {
+        font-size: 1.5em;
+    }
+    
+    .container {
+        padding: 10px;
+    }
+    
+    main {
+        padding: 20px;
+    }
+}
