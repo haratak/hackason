@@ -3,16 +3,16 @@ import 'dart:typed_data';
 
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'package:mobile/models/analysis_result.dart';
-import 'package:mobile/models/child.dart';
-import 'package:mobile/models/media_upload.dart';
-import 'package:mobile/providers/children_provider.dart';
-import 'package:mobile/providers/family_provider.dart';
-import 'package:mobile/providers/storage_provider.dart';
-import 'package:mobile/screens/home_screen.dart';
-import 'package:mobile/services/analysis_result_service.dart';
-import 'package:mobile/services/media_upload_service.dart';
-import 'package:mobile/services/video_thumbnail_service.dart';
+import 'package:kids_diary/models/analysis_result.dart';
+import 'package:kids_diary/models/child.dart';
+import 'package:kids_diary/models/media_upload.dart';
+import 'package:kids_diary/providers/children_provider.dart';
+import 'package:kids_diary/providers/family_provider.dart';
+import 'package:kids_diary/providers/storage_provider.dart';
+import 'package:kids_diary/screens/home_screen.dart';
+import 'package:kids_diary/services/analysis_result_service.dart';
+import 'package:kids_diary/services/media_upload_service.dart';
+import 'package:kids_diary/services/video_thumbnail_service.dart';
 import 'package:provider/provider.dart';
 
 class UnifiedTimelineScreen extends StatefulWidget {

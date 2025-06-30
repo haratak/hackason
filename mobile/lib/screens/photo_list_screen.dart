@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'package:mobile/models/child.dart';
-import 'package:mobile/models/media_upload.dart';
-import 'package:mobile/providers/children_provider.dart';
-import 'package:mobile/providers/family_provider.dart';
-import 'package:mobile/providers/storage_provider.dart';
-import 'package:mobile/screens/home_screen.dart';
+import 'package:kids_diary/models/child.dart';
+import 'package:kids_diary/models/media_upload.dart';
+import 'package:kids_diary/providers/children_provider.dart';
+import 'package:kids_diary/providers/family_provider.dart';
+import 'package:kids_diary/providers/storage_provider.dart';
+import 'package:kids_diary/screens/home_screen.dart';
 import 'package:provider/provider.dart';
 
 class PhotoListScreen extends StatefulWidget {

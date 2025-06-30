@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:mobile/providers/auth_provider.dart';
-import 'package:mobile/screens/family_screen.dart';
+import 'package:kids_diary/providers/auth_provider.dart';
+import 'package:kids_diary/screens/family_screen.dart';
 import 'package:provider/provider.dart';
 
 class SettingsScreen extends StatelessWidget {

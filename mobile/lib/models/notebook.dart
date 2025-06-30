@@ -123,8 +123,8 @@ class NotebookTopic {
 
   NotebookTopic({
     required this.title,
-    this.subtitle,
     required this.content,
+    this.subtitle,
     this.photo,
     this.caption,
   });
@@ -195,11 +195,11 @@ class NotebookGenerationResponse {
 
   NotebookGenerationResponse({
     required this.status,
+    required this.message,
     this.notebookId,
     this.url,
     this.validTopics,
     this.missingTopics,
-    required this.message,
     this.error,
   });
 

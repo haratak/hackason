@@ -1,10 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
-import 'package:crypto/crypto.dart';
-import 'dart:convert';
 
 class VideoThumbnailService {
   static final VideoThumbnailService _instance = VideoThumbnailService._internal();

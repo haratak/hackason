@@ -1,14 +1,17 @@
+import 'dart:async';
 import 'dart:typed_data';
+
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'package:mobile/models/child.dart';
-import 'package:mobile/models/notebook.dart';
-import 'package:mobile/models/media_upload.dart';
-import 'package:mobile/providers/children_provider.dart';
-import 'package:mobile/providers/family_provider.dart';
-import 'package:mobile/services/notebook_service.dart';
-import 'package:mobile/services/video_thumbnail_service.dart';
+import 'package:kids_diary/models/child.dart';
+import 'package:kids_diary/models/media_upload.dart';
+import 'package:kids_diary/models/notebook.dart';
+import 'package:kids_diary/providers/children_provider.dart';
+import 'package:kids_diary/providers/family_provider.dart';
+import 'package:kids_diary/services/notebook_service.dart';
+import 'package:kids_diary/services/video_thumbnail_service.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 class WeeklyNotebookScreen extends StatefulWidget {
   const WeeklyNotebookScreen({super.key});
@@ -23,6 +26,9 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
   List<WeekInfo> _weeks = [];
   bool _isLoading = true;
   String? _selectedChildId;
+  StreamSubscription<Set<String>>? _notebookIdSubscription;
+  final Set<String> _generatingNotebooks = {};
+  Set<String> _existingNotebookIds = {};
 
   @override
   void initState() {
@@ -30,6 +36,12 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadWeeks();
     });
+  }
+
+  @override
+  void dispose() {
+    _notebookIdSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadWeeks() async {
@@ -55,10 +67,40 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
       // 最初の子供を選択（後で変更可能）
       final childId = _selectedChildId ?? children.first.id;
       debugPrint('Loading weeks for child: $childId');
-      
+
+      // ノートブックIDのリアルタイム監視を開始（軽量版）
+      _notebookIdSubscription?.cancel();
+      _notebookIdSubscription = _notebookService
+          .watchChildNotebookIds(childId)
+          .listen(
+            (notebookIds) {
+              debugPrint('Notebook IDs updated: ${notebookIds.length} notebooks');
+              if (mounted) {
+                final previousIds = _existingNotebookIds;
+                _existingNotebookIds = notebookIds;
+                
+                // 新しく追加されたノートブックがある場合のみ再読み込み
+                final newIds = notebookIds.difference(previousIds);
+                if (newIds.isNotEmpty) {
+                  debugPrint('New notebooks detected: $newIds');
+                  
+                  // 新しく作成されたノートブックの生成中フラグをクリア
+                  for (final notebookId in newIds) {
+                    if (_generatingNotebooks.contains(notebookId)) {
+                      setState(() {
+                        _generatingNotebooks.remove(notebookId);
+                      });
+                    }
+                  }
+                  
+                  _loadWeeks(); // 新しいノートブックが追加されたら週リストを再読み込み
+                }
+              }
+            },
+          );
+
       final weeks = await _notebookService.getRecentWeeks(
         childId: childId,
-        weeksCount: 8,
       );
       debugPrint('Loaded ${weeks.length} weeks');
 
@@ -76,12 +118,12 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
       debugPrint('Error message: $e');
       debugPrint('Stack trace: $stackTrace');
       debugPrint('=== END ERROR ===');
-      
+
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
-        
+
         // ユーザーには簡潔なメッセージを表示
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -99,6 +141,9 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
       return;
     }
 
+    // weekIdを外側で定義
+    final weekId = _getWeekId(weekInfo.weekStart);
+
     try {
       debugPrint('=== _generateNotebook START ===');
       debugPrint('Child ID: $_selectedChildId');
@@ -114,11 +159,16 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
             children: [
               CircularProgressIndicator(),
               SizedBox(width: 16),
-              Text('週刊ノートブック生成中...'),
+              Text('ノートブック生成中...'),
             ],
           ),
         ),
       );
+
+      // 生成中フラグを設定
+      setState(() {
+        _generatingNotebooks.add(weekId);
+      });
 
       debugPrint('Calling generateWeeklyNotebook API...');
       final response = await _notebookService.generateWeeklyNotebook(
@@ -144,11 +194,18 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          
-          // 週リストを再読み込み
+
+          // ノートブックは同期的に作成されるので、生成中フラグをクリアして再読み込み
+          setState(() {
+            _generatingNotebooks.remove(weekId);
+          });
           _loadWeeks();
         } else {
           debugPrint('Notebook generation FAILED');
+          // エラー時は生成中フラグをクリア
+          setState(() {
+            _generatingNotebooks.remove(weekId);
+          });
           // エラー時のメッセージ
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -165,9 +222,12 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
       debugPrint('Error message: $e');
       debugPrint('Stack trace: $stackTrace');
       debugPrint('=== END ERROR ===');
-      
+
       if (mounted) {
         Navigator.of(context).pop(); // ダイアログを閉じる
+        setState(() {
+          _generatingNotebooks.remove(weekId);
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('システムエラーが発生しました'),
@@ -189,25 +249,25 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
         appBar: AppBar(
           title: const Text('週刊ノートブック'),
         ),
-        body: Center(
+        body: const Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
+              Icon(
                 Icons.book_outlined,
                 size: 80,
                 color: Colors.grey,
               ),
-              const SizedBox(height: 24),
-              const Text(
+              SizedBox(height: 24),
+              Text(
                 '週刊ノートブックを作成するには',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 16),
-              const Text(
+              SizedBox(height: 16),
+              Text(
                 'ファミリーとお子様の情報を\n登録してください',
                 textAlign: TextAlign.center,
                 style: TextStyle(
@@ -225,12 +285,15 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
       appBar: AppBar(
         title: const Text('週刊ノートブック'),
         actions: [
-          if (childrenProvider.hasChildren && childrenProvider.children.length > 1)
+          if (childrenProvider.hasChildren &&
+              childrenProvider.children.length > 1)
             PopupMenuButton<String>(
               icon: const Icon(Icons.person),
               onSelected: (childId) {
                 setState(() {
                   _selectedChildId = childId;
+                  _generatingNotebooks
+                      .clear(); // Clear generation status when switching child
                 });
                 _loadWeeks();
               },
@@ -309,9 +372,13 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
   Widget _buildWeekCard(WeekInfo week, Child? child) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
+      elevation: week.hasNotebook ? 3 : 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: InkWell(
-        onTap: week.hasNotebook ? () => _viewNotebook(week.notebook!) : null,
-        borderRadius: BorderRadius.circular(8),
+        onTap: week.hasNotebook ? () => _viewNotebook(week) : null,
+        borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -358,13 +425,71 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
               const SizedBox(height: 12),
 
               // ステータス
-              if (week.hasNotebook) ...[
-                Text(
-                  '📖 ノートブックを作成済み',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.green[700],
-                    fontWeight: FontWeight.w500,
+              if (_generatingNotebooks.contains(
+                _getWeekId(week.weekStart),
+              )) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[50],
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.orange[700]!,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'ノートブック生成中...',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.orange[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else if (week.hasNotebook) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green[50],
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.check_circle,
+                        size: 16,
+                        color: Colors.green[700],
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'ノートブック作成済み',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.green[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 if (week.notebook!.topics.isNotEmpty) ...[
@@ -377,6 +502,41 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
                     ),
                   ),
                 ],
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _viewNotebook(week),
+                        icon: const Icon(Icons.menu_book, size: 18),
+                        label: const Text('ノートブックを見る'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor: Colors.indigo,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.indigo.shade200),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: IconButton(
+                        onPressed: week.notebookId != null 
+                            ? () => _shareNotebookById(week.notebookId!)
+                            : null,
+                        icon: const Icon(Icons.share),
+                        color: Colors.indigo,
+                        tooltip: 'ノートブックを共有',
+                      ),
+                    ),
+                  ],
+                ),
               ] else if (week.canGenerate && week.hasMedia) ...[
                 Text(
                   'この週のノートブックを作成できます',
@@ -389,15 +549,20 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () => _generateNotebook(week),
+                    onPressed:
+                        _generatingNotebooks.contains(
+                          _getWeekId(week.weekStart),
+                        )
+                        ? null
+                        : () => _generateNotebook(week),
                     icon: const Icon(Icons.auto_awesome),
                     label: const Text('ノートブック作成'),
                   ),
                 ),
               ] else if (!week.hasMedia) ...[
-                Text(
+                const Text(
                   'この週はまだ写真や動画がありません',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     color: Colors.orange,
                   ),
@@ -413,7 +578,7 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
                   ),
                 ),
               ],
-              
+
               // メディアサムネイル
               if (week.hasMedia) ...[
                 const SizedBox(height: 12),
@@ -426,20 +591,157 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
     );
   }
 
-  void _viewNotebook(Notebook notebook) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => NotebookDetailScreen(notebook: notebook),
-      ),
-    );
+  Future<void> _viewNotebook(WeekInfo week) async {
+    // ノートブックがまだ読み込まれていない場合は読み込む
+    if (week.hasNotebook && !week.notebookLoaded && week.notebookId != null) {
+      // ローディングを表示
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+      
+      try {
+        // ノートブックの詳細を取得
+        final childId = _selectedChildId!;
+        final notebook = await _notebookService.getNotebook(childId, week.notebookId!);
+        
+        if (mounted) {
+          Navigator.of(context).pop(); // ローディングを閉じる
+          
+          if (notebook != null) {
+            week.notebook = notebook;
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => NotebookDetailScreen(notebook: notebook),
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('ノートブックが見つかりません'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          Navigator.of(context).pop(); // ローディングを閉じる
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('ノートブックの読み込みに失敗しました'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } else if (week.notebook != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => NotebookDetailScreen(notebook: week.notebook!),
+        ),
+      );
+    }
   }
+
+  Future<void> _shareNotebook(Notebook notebook) async {
+    try {
+      // Create the web URL for the notebook
+      const baseUrl = 'https://hackason-464007.web.app';
+      final notebookUrl = '$baseUrl/notebooks/${notebook.id}';
+
+      final shareText =
+          '''
+${notebook.nickname}のノートブック
+${_formatDateRange(notebook.period.start, notebook.period.end)}
+
+${notebook.topics.length}個のエピソードが記録されています。
+
+ノートブックを見る：
+$notebookUrl
+''';
+
+      await Share.share(shareText);
+    } catch (e) {
+      debugPrint('Error sharing notebook: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('共有に失敗しました'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _shareNotebookById(String notebookId) async {
+    try {
+      // Create the web URL for the notebook
+      const baseUrl = 'https://hackason-464007.web.app';
+      final notebookUrl = '$baseUrl/notebooks/$notebookId';
+
+      final shareText = '''
+ノートブック
+
+ノートブックを見る：
+$notebookUrl
+''';
+
+      await Share.share(shareText);
+    } catch (e) {
+      debugPrint('Error sharing notebook: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('共有に失敗しました'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  String _formatDateRange(DateTime start, DateTime end) {
+    return '${start.year}年${start.month}月${start.day}日 〜 ${end.month}月${end.day}日';
+  }
+
+  String _getWeekId(DateTime weekStart) {
+    // バックエンドの実装に合わせてIDを生成
+    // 形式: {child_id}_{start_date}_notebook
+    final startDateStr = '${weekStart.year}_${weekStart.month.toString().padLeft(2, '0')}_${weekStart.day.toString().padLeft(2, '0')}';
+    return '${_selectedChildId}_${startDateStr}_notebook';
+  }
+
+  int _getWeekNumber(DateTime date) {
+    final firstDayOfMonth = DateTime(date.year, date.month);
+    final firstMonday = _getWeekStart(firstDayOfMonth);
+    final targetMonday = _getWeekStart(date);
+
+    final diffInDays = targetMonday.difference(firstMonday).inDays;
+    return (diffInDays ~/ 7) + 1;
+  }
+
+  DateTime _getWeekStart(DateTime date) {
+    final weekday = date.weekday;
+    final daysFromMonday = weekday - 1;
+    return DateTime(
+      date.year,
+      date.month,
+      date.day,
+    ).subtract(Duration(days: daysFromMonday));
+  }
+
 
   Widget _buildMediaThumbnails(List<MediaUpload> mediaList) {
     if (mediaList.isEmpty) return const SizedBox.shrink();
-    
+
     // 最大6個まで表示
     final displayMedia = mediaList.take(6).toList();
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -466,7 +768,9 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
             itemBuilder: (context, index) {
               final media = displayMedia[index];
               return Padding(
-                padding: EdgeInsets.only(right: index < displayMedia.length - 1 ? 8 : 0),
+                padding: EdgeInsets.only(
+                  right: index < displayMedia.length - 1 ? 8 : 0,
+                ),
                 child: _buildMediaThumbnail(media),
               );
             },
@@ -508,7 +812,10 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
                     errorBuilder: (context, error, stackTrace) {
                       return Container(
                         color: Colors.grey[300],
-                        child: const Icon(Icons.broken_image, color: Colors.grey),
+                        child: const Icon(
+                          Icons.broken_image,
+                          color: Colors.grey,
+                        ),
                       );
                     },
                   )
@@ -516,7 +823,8 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
                   FutureBuilder<Uint8List?>(
                     future: _videoThumbnailService.getThumbnail(snapshot.data!),
                     builder: (context, thumbnailSnapshot) {
-                      if (thumbnailSnapshot.hasData && thumbnailSnapshot.data != null) {
+                      if (thumbnailSnapshot.hasData &&
+                          thumbnailSnapshot.data != null) {
                         return Image.memory(
                           thumbnailSnapshot.data!,
                           fit: BoxFit.cover,
@@ -526,14 +834,17 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
                       } else {
                         return Container(
                           color: Colors.grey[300],
-                          child: const Icon(Icons.video_library, color: Colors.grey),
+                          child: const Icon(
+                            Icons.video_library,
+                            color: Colors.grey,
+                          ),
                         );
                       }
                     },
                   )
                 else
                   const Icon(Icons.insert_drive_file, color: Colors.grey),
-                
+
                 if (media.mediaType == MediaType.video)
                   const Positioned(
                     bottom: 4,
@@ -575,15 +886,41 @@ class NotebookDetailScreen extends StatelessWidget {
   final Notebook notebook;
 
   const NotebookDetailScreen({
-    super.key,
     required this.notebook,
+    super.key,
   });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${notebook.nickname}の週刊ノート'),
+        title: Text('${notebook.nickname}のノート'),
+        actions: [
+          IconButton(
+            onPressed: () async {
+              try {
+                const baseUrl = 'https://hackason-464007.web.app';
+                final notebookUrl = '$baseUrl/notebooks/${notebook.id}';
+
+                final shareText =
+                    '''
+${notebook.nickname}のノートブック
+
+${notebook.topics.length}個のエピソードが記録されています。
+
+ノートブックを見る：
+$notebookUrl
+''';
+
+                await Share.share(shareText);
+              } catch (e) {
+                debugPrint('Error sharing notebook: $e');
+              }
+            },
+            icon: const Icon(Icons.share),
+            tooltip: 'ノートブックを共有',
+          ),
+        ],
       ),
       body: ListView.builder(
         padding: const EdgeInsets.all(16),
@@ -678,3 +1015,4 @@ class NotebookDetailScreen extends StatelessWidget {
     );
   }
 }
+
