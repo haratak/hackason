@@ -1,0 +1,16 @@
+{
+  "hosting": {
+    "public": "y",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/children/*/notebooks/*",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

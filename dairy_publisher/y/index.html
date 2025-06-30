@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>成長記録</title>
+    <link rel="stylesheet" href="/style.css">
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div class="loading" id="loading">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p>データを読み込んでいます...</p>
+        </div>
+    </div>
+    <div class="newsletter" id="newsletter" style="display: none;">
+        <div class="header">
+            <h1 class="title" id="newsletter-title">成長記録</h1>
+            <hr class="separator">
+            <div class="date" id="newsletter-date">読み込み中...</div>
+            <hr class="separator">
+        </div>
+        
+        <div class="content">
+            <div class="left-column">
+                <div class="section">
+                    <div class="section-title" id="topic1-title">　</div>
+                    <div class="photo-large" id="topic1-photo"></div>
+                    <div class="subtitle" id="topic1-subtitle">　</div>
+                    <div class="text" id="topic1-content">
+                        　
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title" id="topic2-title">　</div>
+                    <div class="text" id="topic2-content">
+                        　
+                    </div>
+                </div>
+            </div>
+            
+            <div class="right-column">
+                <div class="section">
+                    <div class="section-title" id="topic3-title">　</div>
+                    <div class="photo-small" id="topic3-photo"></div>
+                    <div class="caption" id="topic3-caption">　</div>
+                    <div class="text" id="topic3-content">
+                        　
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title" id="topic4-title">　</div>
+                    <div class="photo-medium" id="topic4-photo"></div>
+                    <div class="caption" id="topic4-caption">　</div>
+                </div>
+            </div>
+            
+            <div class="center-section">
+                <div class="section-title" id="topic5-title">　</div>
+                <div class="text" id="topic5-content">
+                    　
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Firebase設定
+        const firebaseConfig = {
+            projectId: "hackason-464007",
+            appId: "1:431161319367:web:a2c073c100408c4d4003e2",
+            storageBucket: "hackason-464007.firebasestorage.app",
+            apiKey: "AIzaSyBWv5BMiITRLDf9pECDfa5qgNMboYgFZbo",
+            authDomain: "hackason-464007.firebaseapp.com",
+            messagingSenderId: "431161319367",
+            measurementId: "G-W4KJYT1HB4"
+        };
+
+        // Firebase初期化
+        try {
+            firebase.initializeApp(firebaseConfig);
+            console.log('Firebase initialized successfully');
+        } catch (error) {
+            console.error('Firebase initialization error:', error);
+        }
+        
+        const db = firebase.firestore();
+
+        // URLから子供IDとノートブックIDを取得
+        function getIdsFromUrl() {
+            const path = window.location.pathname;
+            const match = path.match(/\/children\/([^\/]+)\/notebooks\/([^\/]+)/);
+            if (match) {
+                return {
+                    childId: match[1],
+                    notebookId: match[2]
+                };
+            }
+            return null;
+        }
+
+        // 日付をフォーマット
+        function formatDate(date) {
+            if (!date) return new Date().toLocaleDateString('ja-JP');
+            
+            // Firestore Timestampの場合
+            if (date.toDate) {
+                date = date.toDate();
+            }
+            
+            const year = date.getFullYear();
+            const month = date.getMonth() + 1;
+            const day = date.getDate();
+            return `${year}年${month}月${day}日`;
+        }
+
+        // ページ内容を更新
+        function updatePageContent(data) {
+            // ローディング画面を非表示、コンテンツを表示
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('newsletter').style.display = 'block';
+            
+            // タイトル更新（ニックネーム通信）
+            const nickname = data.nickname || '赤ちゃん';
+            document.getElementById('newsletter-title').textContent = `${nickname}通信`;
+            document.querySelector('title').textContent = `${nickname}通信`;
+            
+            // 日付更新
+            document.getElementById('newsletter-date').textContent = formatDate(data.date);
+            
+            // 各トピックの更新
+            if (data.topics && data.topics.length >= 5) {
+                // トピック1（左カラム - 写真付き大）
+                const topic1 = data.topics[0];
+                document.getElementById('topic1-title').textContent = topic1.title || '今週の興味';
+                document.getElementById('topic1-subtitle').textContent = topic1.subtitle || '';
+                document.getElementById('topic1-content').textContent = topic1.content || '';
+                if (topic1.photo) {
+                    document.getElementById('topic1-photo').style.backgroundImage = `url('${topic1.photo}')`;
+                }
+                
+                // トピック2（左カラム - テキストのみ）
+                const topic2 = data.topics[1];
+                document.getElementById('topic2-title').textContent = topic2.title || '行った！場所';
+                document.getElementById('topic2-content').textContent = topic2.content || '';
+                
+                // トピック3（右カラム - 写真付き小）
+                const topic3 = data.topics[2];
+                document.getElementById('topic3-title').textContent = topic3.title || '';
+                document.getElementById('topic3-caption').textContent = topic3.caption || '';
+                document.getElementById('topic3-content').textContent = topic3.content || '';
+                if (topic3.photo) {
+                    document.getElementById('topic3-photo').style.backgroundImage = `url('${topic3.photo}')`;
+                }
+                
+                // トピック4（右カラム - 写真付き中）
+                const topic4 = data.topics[3];
+                document.getElementById('topic4-title').textContent = topic4.title || '今週のベストショット';
+                document.getElementById('topic4-caption').textContent = topic4.caption || '';
+                if (topic4.photo) {
+                    document.getElementById('topic4-photo').style.backgroundImage = `url('${topic4.photo}')`;
+                }
+                
+                // トピック5（中央セクション）
+                const topic5 = data.topics[4];
+                document.getElementById('topic5-title').textContent = topic5.title || 'できるようになったこと';
+                document.getElementById('topic5-content').textContent = topic5.content || '';
+            }
+        }
+
+        // Firestoreからデータを取得
+        async function loadNotebookData(childId, notebookId) {
+            try {
+                console.log(`Loading notebook: ${childId}/${notebookId}`);
+                const doc = await db.collection('children').doc(childId)
+                    .collection('notebooks').doc(notebookId).get();
+                if (doc.exists) {
+                    const data = doc.data();
+                    console.log('Document found:', data);
+                    return data;
+                } else {
+                    console.log('Document not found');
+                    return null;
+                }
+            } catch (error) {
+                console.error('Error loading data:', error);
+                console.error('Error details:', error.message, error.code);
+                return null;
+            }
+        }
+
+        // エラー表示
+        function showError() {
+            // ローディング画面を非表示、コンテンツを表示
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('newsletter').style.display = 'block';
+            
+            document.getElementById('newsletter-title').textContent = 'データが見つかりません';
+            document.getElementById('newsletter-date').textContent = '---';
+            document.getElementById('topic1-content').textContent = 'データの読み込みに失敗しました。';
+            document.getElementById('topic2-content').textContent = 'URLを確認してください。';
+            document.getElementById('topic3-content').textContent = '';
+            document.getElementById('topic5-content').textContent = '';
+        }
+
+        // ページ読み込み時の処理
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('Page loaded. Current URL:', window.location.href);
+            const ids = getIdsFromUrl();
+            console.log('Extracted IDs:', ids);
+            
+            if (ids) {
+                // Firestoreからデータを取得して表示
+                const data = await loadNotebookData(ids.childId, ids.notebookId);
+                if (data) {
+                    updatePageContent(data);
+                } else {
+                    showError();
+                }
+            } else {
+                // IDがない場合はエラー表示
+                console.log('No valid URL pattern found.');
+                showError();
+            }
+        });
+    </script>
+</body>
+</html>
