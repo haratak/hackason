@@ -32,6 +32,7 @@ def process_media_upload(request):
         media_uri = request_json.get('media_uri')
         user_id = request_json.get('user_id', '')
         child_id = request_json.get('child_id', '')
+        child_age_months = request_json.get('child_age_months')  # None if not provided
         
         if not media_uri:
             return {'error': 'media_uri is required'}, 400
@@ -40,7 +41,7 @@ def process_media_upload(request):
         print(f"User: {user_id}, Child: {child_id}")
         
         # Firestoreクライアント
-        db = firestore.Client(project=PROJECT_ID, database="database")
+        db = firestore.Client(project=PROJECT_ID)
         
         # ドキュメントIDがある場合は処理ステータスを更新
         if doc_id:
@@ -53,41 +54,53 @@ def process_media_upload(request):
         result = process_media_for_cloud_function(
             media_uri=media_uri,
             user_id=user_id,
-            child_id=child_id
+            child_id=child_id,
+            child_age_months=child_age_months
         )
         
         if result.get("status") == "success":
-            episode_id = result.get("episode_id")
-            indexed = result.get("indexed", False)
+            media_id = result.get("media_id")
+            emotional_title = result.get("emotional_title", "")
+            episode_count = result.get("episode_count", 0)
+            indexed_count = result.get("indexed_count", 0)
+            perspectives = result.get("perspectives", [])
             
             # ドキュメントIDがある場合は処理完了を記録
             if doc_id:
                 db.collection('media_uploads').document(doc_id).update({
                     'processing_status': 'completed',
                     'processed_at': firestore.SERVER_TIMESTAMP,
-                    'episode_id': episode_id,
+                    'media_id': media_id,
+                    'emotional_title': emotional_title,
+                    'episode_count': episode_count,
                     'updated_at': firestore.SERVER_TIMESTAMP
                 })
             
             # 処理ログを記録
             db.collection('processing_logs').add({
                 'media_upload_id': doc_id,
-                'episode_id': episode_id,
+                'media_id': media_id,
                 'event_type': 'media_analysis',
                 'status': 'success',
                 'timestamp': firestore.SERVER_TIMESTAMP,
                 'details': {
                     'user_id': user_id,
                     'child_id': child_id,
+                    'child_age_months': child_age_months,
                     'media_uri': media_uri,
-                    'indexed': indexed
+                    'episode_count': episode_count,
+                    'indexed_count': indexed_count,
+                    'perspectives': perspectives
                 }
             })
             
             return {
                 'status': 'success',
-                'episode_id': episode_id,
-                'indexed': indexed
+                'media_id': media_id,
+                'emotional_title': emotional_title,
+                'episode_count': episode_count,
+                'indexed_count': indexed_count,
+                'perspectives': perspectives
             }, 200
         else:
             # エラーの場合
@@ -179,6 +192,7 @@ def process_media_upload_firestore(cloud_event):
     media_uri = fields.get("media_uri", "")
     user_id = fields.get("user_id", "")
     child_id = fields.get("child_id", "")
+    child_age_months = fields.get("child_age_months")  # None if not provided
     processing_status = fields.get("processing_status", "pending")
     
     # 既に処理済みまたは処理中の場合はスキップ
@@ -194,7 +208,7 @@ def process_media_upload_firestore(cloud_event):
     print(f"User: {user_id}, Child: {child_id}")
     
     # Firestoreクライアント
-    db = firestore.Client(project=PROJECT_ID, database="database")
+    db = firestore.Client(project=PROJECT_ID)
     
     try:
         # 処理ステータスを更新
@@ -207,37 +221,46 @@ def process_media_upload_firestore(cloud_event):
         result = process_media_for_cloud_function(
             media_uri=media_uri,
             user_id=user_id,
-            child_id=child_id
+            child_id=child_id,
+            child_age_months=child_age_months
         )
         
         if result.get("status") == "success":
-            episode_id = result.get("episode_id")
-            indexed = result.get("indexed", False)
+            media_id = result.get("media_id")
+            emotional_title = result.get("emotional_title", "")
+            episode_count = result.get("episode_count", 0)
+            indexed_count = result.get("indexed_count", 0)
+            perspectives = result.get("perspectives", [])
             
             # 処理完了を記録
             db.collection('media_uploads').document(doc_id).update({
                 'processing_status': 'completed',
                 'processed_at': firestore.SERVER_TIMESTAMP,
-                'episode_id': episode_id,
+                'media_id': media_id,
+                'emotional_title': emotional_title,
+                'episode_count': episode_count,
                 'updated_at': firestore.SERVER_TIMESTAMP
             })
             
             # 処理ログを記録
             db.collection('processing_logs').add({
                 'media_upload_id': doc_id,
-                'episode_id': episode_id,
+                'media_id': media_id,
                 'event_type': 'media_analysis',
                 'status': 'success',
                 'timestamp': firestore.SERVER_TIMESTAMP,
                 'details': {
                     'user_id': user_id,
                     'child_id': child_id,
+                    'child_age_months': child_age_months,
                     'media_uri': media_uri,
-                    'indexed': indexed
+                    'episode_count': episode_count,
+                    'indexed_count': indexed_count,
+                    'perspectives': perspectives
                 }
             })
             
-            print(f"Successfully processed. Episode ID: {episode_id}")
+            print(f"Successfully processed. Media ID: {media_id}")
             
         else:
             # エラーの場合

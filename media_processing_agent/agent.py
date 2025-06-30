@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 from google.adk.agents import Agent
 import os
 from dotenv import load_dotenv
@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 
 import json
 import logging
+import asyncio
+import uuid
 from google.cloud.aiplatform_v1beta1.types import index_endpoint
 from vertexai.generative_models import GenerativeModel, Part
 from vertexai.language_models import TextEmbeddingModel
@@ -43,7 +45,7 @@ _vector_search_index = None
 def get_firestore_client():
     global _db
     if _db is None:
-        _db = firestore.Client(project=get_project_id(), database="database")
+        _db = firestore.Client(project=get_project_id())
     return _db
 
 
@@ -69,19 +71,48 @@ def get_vector_search_index():
 
 
 logger = logging.getLogger(__name__)
-MODEL_NAME = "gemini-2.0-flash-001"
+MODEL_NAME = "gemini-2.5-flash"
 
 # Child ID will be set when the agent is invoked
 # Default to "demo" if not provided
 CHILD_ID = "demo"
 
 
+def convert_firebase_url_to_gs(firebase_url: str) -> str:
+    """Convert Firebase download URL to gs:// format for better Vertex AI access"""
+    try:
+        # Extract bucket and object path from Firebase URL
+        if "firebasestorage.app" in firebase_url and "/o/" in firebase_url:
+            # Parse Firebase Storage download URL
+            parts = firebase_url.split("/o/")
+            if len(parts) >= 2:
+                bucket_part = parts[0].split("/")[-1]  # Get bucket name
+                object_part = parts[1].split("?")[0]  # Remove query parameters
+                
+                # URL decode the object path
+                import urllib.parse
+                object_path = urllib.parse.unquote(object_part)
+                
+                gs_url = f"gs://{bucket_part}/{object_path}"
+                logger.info(f"Converted Firebase URL to gs:// format: {gs_url}")
+                return gs_url
+    except Exception as e:
+        logger.warning(f"Failed to convert Firebase URL: {e}")
+    
+    return firebase_url  # Return original if conversion fails
+
+
 def objective_analyzer(media_uri: str) -> dict:
     """Extract objective facts from media files"""
     model = GenerativeModel(MODEL_NAME)
     try:
+        # Try to convert Firebase URL to gs:// format for better access
+        original_uri = media_uri
+        if "firebasestorage.app" in media_uri:
+            media_uri = convert_firebase_url_to_gs(media_uri)
+        
         # Determine MIME type from URL extension
-        media_uri_lower = media_uri.lower()
+        media_uri_lower = original_uri.lower()
 
         # Extract extension from URL (handle query parameters)
         url_path = media_uri_lower.split("?")[0]
@@ -117,7 +148,13 @@ def objective_analyzer(media_uri: str) -> dict:
             )
 
         logger.info(f"Detected MIME type: {mime_type} for URL: {media_uri}")
-        media_part = Part.from_uri(uri=media_uri, mime_type=mime_type)
+        
+        # Try gs:// URL first, then fallback to original URL
+        try:
+            media_part = Part.from_uri(uri=media_uri, mime_type=mime_type)
+        except Exception as gs_error:
+            logger.warning(f"gs:// URL failed, trying original URL: {gs_error}")
+            media_part = Part.from_uri(uri=original_uri, mime_type=mime_type)
 
         prompt = """
         あなたは、子供の行動を観察する客観的な分析システムです。
@@ -162,6 +199,8 @@ def objective_analyzer(media_uri: str) -> dict:
 
         try:
             facts = json.loads(response_text)
+            # Add media type to facts
+            facts["media_type"] = "video" if mime_type.startswith("video/") else "image"
             return {"status": "success", "report": facts}
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON: {e}")
@@ -172,6 +211,232 @@ def objective_analyzer(media_uri: str) -> dict:
             }
 
     except Exception as e:
+        error_msg = str(e)
+        
+        # Check for URL access errors
+        if "Cannot fetch content from the provided URL" in error_msg or "URL_ERROR" in error_msg:
+            return {
+                "status": "error", 
+                "error_message": "メディアファイルにアクセスできませんでした。Firebase StorageのURLがVertex AIからアクセス可能であることを確認してください。",
+                "error_details": {
+                    "original_error": error_msg,
+                    "solutions": [
+                        "Firebase StorageのCORS設定を確認する",
+                        "Vertex AI Service Accountに適切な権限があることを確認する", 
+                        "メディアファイルが公開アクセス可能かCloud Storageバケットの権限を確認する"
+                    ]
+                }
+            }
+        
+        return {"status": "error", "error_message": str(e)}
+
+
+def perspective_determiner(facts: Dict[str, Any], child_age_months: int) -> dict:
+    """Determine analysis perspectives based on media type, child age and observed facts"""
+    model = GenerativeModel(MODEL_NAME)
+    try:
+        facts_json = json.dumps(facts, ensure_ascii=False, indent=2)
+        media_type = facts.get("media_type", "image")
+
+        if media_type == "video":
+            # 動画の場合：多角的な視点（発達、感情、思い出、面白い瞬間など）
+            prompt = f"""
+            あなたは、子供の成長記録を多角的に分析する専門家です。動画から観察される様々な側面を捉えてください。
+
+            【入力情報】
+            メディアタイプ: 動画
+            月齢: {child_age_months}ヶ月
+            観察された事実:
+            {facts_json}
+
+            【タスク】
+            動画から観察される内容を基に、以下の観点から最も重要な視点を最大4つ選択してください：
+
+            【分析の観点】
+            1. 発達・成長の視点
+               - 言語発達（発話、理解）
+               - 運動発達（動き、器用さ）
+               - 認知・社会性の発達
+
+            2. 感情・思い出の視点
+               - 楽しい瞬間、面白いポイント
+               - 家族や周りの人との関わり
+               - 特別な体験や初めての経験
+
+            3. 赤ちゃん特有の視点（該当する月齢の場合）
+               - かわいい仕草や特徴
+               - この時期ならではの行動
+               - 親子の絆を感じる瞬間
+
+            【出力形式】
+            {{
+                "perspectives": [
+                    {{
+                        "type": "視点名（development, emotional_moment, funny_point, baby_features等）",
+                        "focus": "この視点で注目すべき具体的なポイント",
+                        "reason": "なぜこの視点が重要・特別なのか",
+                        "observable_signs": ["動画から観察された具体的な要素"]
+                    }}
+                ],
+                "analysis_note": "この動画が捉えた瞬間の総合的な意味"
+            }}
+            """
+        else:
+            # 写真の場合：シーン特定と感情・思い出に限定
+            prompt = f"""
+            あなたは、写真から場面や感情を読み取る専門家です。この写真が捉えた瞬間の意味を分析してください。
+
+            【入力情報】
+            メディアタイプ: 写真
+            月齢: {child_age_months}ヶ月
+            観察された事実:
+            {facts_json}
+
+            【タスク】
+            写真から読み取れるシーン、感情、思い出の観点から分析視点を最大4つまで選択してください。
+            ※写真では発達評価は行わず、その瞬間の情景や感情に焦点を当ててください。
+
+            【視点選択の指針】
+            1. シーンの特定
+               - どんな場所やイベントか（お祭り、公園、家など）
+               - 季節や時期の推測
+               - 背景から読み取れる状況
+
+            2. 感情の瞬間
+               - 表情から読み取れる感情
+               - その瞬間の雰囲気
+               - 楽しさや喜びの表現
+
+            3. 思い出としての価値
+               - 特別な体験や初めての経験
+               - 家族や友達との関わり
+               - 記念すべき瞬間
+
+            【出力形式】
+            {{
+                "perspectives": [
+                    {{
+                        "type": "視点名（scene_context, emotional_moment, special_memory等）",
+                        "focus": "この視点で注目すべき具体的なポイント",
+                        "reason": "なぜこの瞬間が特別なのか",
+                        "observable_signs": ["写真から読み取れる具体的な要素"]
+                    }}
+                ],
+                "analysis_note": "この写真が捉えた瞬間の総合的な意味"
+            }}
+            """
+
+        prompt += """
+        
+        【重要】
+        - 視点数は最大4つまで
+        - 実際に観察された内容に基づく視点のみを選択
+        - 各視点は重複しないように独立した観点から選ぶ
+        """
+
+        response = model.generate_content(prompt)
+        response_text = response.text.strip()
+
+        logger.info(
+            f"Raw response from perspective_determiner: {
+                response_text[:200]}..."
+        )
+
+        # Extract JSON from response
+        import re
+
+        json_match = re.search(r"```json\s*(.*?)\s*```",
+                               response_text, re.DOTALL)
+        if json_match:
+            response_text = json_match.group(1)
+        else:
+            json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
+            if json_match:
+                response_text = json_match.group(0)
+
+        perspectives = json.loads(response_text)
+        return {"status": "success", "report": perspectives}
+
+    except Exception as e:
+        logger.error(f"Error in perspective_determiner: {e}")
+        return {"status": "error", "error_message": str(e)}
+
+
+def dynamic_multi_analyzer(facts: Dict[str, Any], perspective: Dict[str, Any]) -> dict:
+    """Analyze facts from a specific perspective"""
+    model = GenerativeModel(MODEL_NAME)
+    try:
+        # Validate perspective structure
+        if "type" not in perspective:
+            return {
+                "status": "error",
+                "error_message": "perspective must contain 'type' field",
+            }
+        if "focus" not in perspective:
+            return {
+                "status": "error",
+                "error_message": "perspective must contain 'focus' field",
+            }
+
+        facts_json = json.dumps(facts, ensure_ascii=False, indent=2)
+        media_type = facts.get("media_type", "image")
+
+        prompt = f"""
+        あなたは、指定された視点から子供の瞬間を分析する専門家です。
+
+        【入力情報】
+        メディアタイプ: {media_type}
+        分析視点: {perspective['type']}
+        着目ポイント: {perspective['focus']}
+        観察された事実:
+        {facts_json}
+
+        【タスク】
+        上記の視点から、観察された内容を分析し、親にとって価値のある洞察を提供してください。
+
+        【分析の指針】
+        1. 客観的事実に基づいた分析を行う
+        2. {"動画の場合は発達的意義や成長の様子を含める" if media_type == "video" else "写真の場合はその瞬間の情景や感情に焦点を当てる"}
+        3. 親が喜ぶような温かい解釈を心がける
+        4. {"将来の成長への期待を含める" if media_type == "video" else "思い出としての価値を強調する"}
+        5. タグは「楽しい出来事」「成長の記録」「新しい挑戦」「感動の瞬間」など、新聞記事として引っ張りやすいフレーズにする
+
+        【出力形式】
+        {{
+            "perspective_type": "{perspective['type']}",
+            "title": "この瞬間を表す印象的なタイトル（15文字以内）",
+            "summary": "観察された行動の具体的な描写と、この視点での意味（100文字程度）",
+            "significance": "この視点から見た発達的重要性や親へのメッセージ",
+            "future_outlook": "今後の成長で期待できること",
+            "vector_tags": ["より情緒的で検索しやすいタグを5-8個生成。例：「初めてできた喜びの瞬間」「小さな手で大きな挑戦」「笑顔あふれる成長の一歩」「親子で分かち合う達成感」など、感情と成長が伝わる10-20文字程度のフレーズ"]
+        }}
+
+        【注意事項】
+        - 医学的診断や断定的な評価は避ける
+        - 温かみのある表現を使う
+        - 専門用語は最小限にし、分かりやすい言葉を使う
+        """
+
+        response = model.generate_content(prompt)
+        response_text = response.text.strip()
+
+        # Extract JSON from response
+        import re
+
+        json_match = re.search(r"```json\s*(.*?)\s*```",
+                               response_text, re.DOTALL)
+        if json_match:
+            response_text = json_match.group(1)
+        else:
+            json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
+            if json_match:
+                response_text = json_match.group(0)
+
+        analysis = json.loads(response_text)
+        return {"status": "success", "report": analysis}
+
+    except Exception as e:
+        logger.error(f"Error in dynamic_multi_analyzer: {e}")
         return {"status": "error", "error_message": str(e)}
 
 
@@ -192,7 +457,8 @@ def highlight_identifier(facts: Dict[str, Any]) -> dict:
         【作成指針】
         - 最も感情豊か、あるいは成長が感じられる瞬間をハイライトとして選んでください。
         - **あなたの感想や主観的な物語は一切含めず**、客観的な事実の要約に徹してください。
-        - **ベクトル検索で後から見つけやすいように、具体的で客観的なタグを生成してください。**
+        - **タグは新聞記事のような視点で、「楽しい記事」「成長の記事」「挑戦の記事」として検索されやすいように作成してください。**
+        - **タグは感情や成長の様子が伝わる10-20文字のフレーズにしてください。**
 
         以下のJSON形式で、最終的な「エピソードログ」を返してください：
         {{
@@ -201,7 +467,7 @@ def highlight_identifier(facts: Dict[str, Any]) -> dict:
             "emotion": "ハイライトシーンでの主な感情",
             "activities": ["ハイライト中の具体的な活動"],
             "development_milestones": ["このハイライトが示す発達の兆候"],
-            "vector_tags": ["検索用の具体的で客観的なタグ（例：公園, 滑り台, 笑顔, 走る）"]
+            "vector_tags": ["より情緒的で検索しやすいタグを5-8個生成。例：「初めての大冒険」「ドキドキワクワクの挑戦」「できたよ！の笑顔」「成長を感じる瞬間」など、感情と体験が伝わる10-20文字程度のフレーズ"]
         }}
         """
 
@@ -226,13 +492,283 @@ def highlight_identifier(facts: Dict[str, Any]) -> dict:
         return {"status": "error", "error_message": str(e)}
 
 
+def generate_emotional_title(episodes: List[Dict[str, Any]]) -> str:
+    """Generate an emotional title for timeline display (15-20 chars)"""
+    try:
+        # Collect key moments from all episodes
+        key_moments = []
+        emotions = []
+        
+        for episode in episodes:
+            if isinstance(episode, dict):
+                title = episode.get("title", "")
+                summary = episode.get("summary", "")
+                tags = episode.get("tags", episode.get("vector_tags", []))
+                
+                # Extract emotional keywords
+                if "初めて" in title or "初めて" in summary:
+                    key_moments.append("初めて")
+                if "笑顔" in title or "笑顔" in summary or "笑う" in summary:
+                    emotions.append("笑顔")
+                if "成長" in title or "成長" in summary:
+                    key_moments.append("成長")
+                if "楽しい" in summary or "楽しそう" in summary:
+                    emotions.append("楽しい")
+                if "できた" in summary or "成功" in summary:
+                    key_moments.append("できた")
+                
+                # Check tags for emotions
+                for tag in tags:
+                    if "喜び" in tag or "楽しい" in tag:
+                        emotions.append("キラキラ")
+                    if "挑戦" in tag:
+                        key_moments.append("挑戦")
+        
+        # Generate title based on collected data
+        vertexai.init(project=get_project_id(), location=get_location())
+        model = GenerativeModel(MODEL_NAME)
+        
+        prompt = f"""
+以下のキーワードを元に、子供の成長記録のタイムライン表示用の短いタイトルを生成してください。
+
+要件：
+- 15-20文字以内（絵文字含む）
+- 感情的で前向きな表現
+- 親が見て嬉しくなるような内容
+- 絵文字を1-2個使用
+
+キーワード：
+- キーモーメント: {', '.join(key_moments[:3]) if key_moments else '日常の一コマ'}
+- 感情: {', '.join(emotions[:3]) if emotions else '穏やか'}
+
+タイトルのみを出力してください。
+"""
+        
+        response = model.generate_content(prompt)
+        emotional_title = response.text.strip()
+        
+        # Fallback if generation fails or is too long
+        if len(emotional_title) > 20 or len(emotional_title) < 10:
+            emotional_title = "✨今日も元気いっぱい！"
+        
+        return emotional_title
+        
+    except Exception as e:
+        logger.error(f"Failed to generate emotional title: {e}")
+        return "🌟すくすく成長中！"
+
+
+def save_multi_episode_analysis(
+    episodes: List[Dict[str, Any]],
+    media_id: str = "",
+    media_source_uri: str = "",
+    child_id: str = "",
+    child_age_months: int = 0,
+    user_id: str = "",
+) -> dict:
+    """Save multiple episodes as nested array in a single media document"""
+    try:
+        # Generate media_id if not provided
+        if not media_id:
+            media_id = str(uuid.uuid4())
+            logger.info(f"Generated new media_id: {media_id}")
+        
+        # Use provided child_id or default
+        if not child_id:
+            child_id = globals().get("CHILD_ID", "demo")
+
+        logger.info(f"Saving {len(episodes)} episodes for media: {media_id}")
+
+        db = get_firestore_client()
+
+        # Prepare episodes data
+        episodes_data = []
+        for episode in episodes:
+            # Extract episode data
+            if isinstance(episode, dict) and "report" in episode:
+                ep_data = episode["report"]
+            else:
+                ep_data = episode
+            
+            # Create abstract episode structure
+            episode_entry = {
+                "id": str(uuid.uuid4()),
+                "type": ep_data.get("perspective_type", ep_data.get("type", "general")),
+                "title": ep_data.get("title", ""),
+                "summary": ep_data.get("summary", ""),
+                "content": ep_data.get("content", ep_data.get("significance", "")),
+                "tags": ep_data.get("vector_tags", ep_data.get("tags", [])),
+                "metadata": {
+                    "future_outlook": ep_data.get("future_outlook", ""),
+                    "significance": ep_data.get("significance", ""),
+                },
+                "created_at": datetime.now(timezone.utc),
+            }
+            episodes_data.append(episode_entry)
+
+        # Generate emotional title for timeline
+        emotional_title = generate_emotional_title(episodes_data)
+
+        # Save all data in single document
+        media_data = {
+            "media_uri": media_source_uri,
+            "child_id": child_id,
+            "child_age_months": child_age_months,
+            "user_id": user_id,
+            "emotional_title": emotional_title,  # For timeline display
+            "episodes": episodes_data,
+            "episode_count": len(episodes_data),
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
+        }
+
+        # Save to Firestore
+        media_ref = db.collection("media").document(media_id)
+        media_ref.set(media_data)
+
+        logger.info(f"✅ Successfully saved {len(episodes_data)} episodes for media: {media_id}")
+        
+        return {
+            "status": "success",
+            "media_id": media_id,
+            "emotional_title": emotional_title,
+            "episode_count": len(episodes_data),
+            "episodes": episodes_data,
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Failed to save episodes: {e}")
+        return {
+            "status": "error",
+            "error_message": f"Failed to save episodes: {str(e)}",
+        }
+
+
+def save_analysis(
+    analysis_log: Dict[str, Any],
+    media_id: str = "",
+    media_source_uri: str = "",
+    child_id: str = "",
+    child_age_months: int = 0,
+    user_id: str = "",
+) -> dict:
+    """Backward compatibility: Save single analysis as episode"""
+    return save_multi_episode_analysis(
+        episodes=[analysis_log],
+        media_id=media_id,
+        media_source_uri=media_source_uri,
+        child_id=child_id,
+        child_age_months=child_age_months,
+        user_id=user_id,
+    )
+
+
+def index_episodes(
+    episodes: List[Dict[str, Any]], 
+    media_id: str,
+    child_id: str = "",
+) -> dict:
+    """Index multiple episodes for vector search"""
+    try:
+        # Use provided child_id or default
+        if not child_id:
+            child_id = globals().get("CHILD_ID", "demo")
+
+        vector_search_index = get_vector_search_index()
+        if not vector_search_index:
+            logger.warning("Vector search index not configured. Skipping indexing.")
+            return {"status": "skipped", "message": "Vector indexing not configured"}
+
+        indexed_count = 0
+        for episode in episodes:
+            try:
+                # Extract episode data
+                if isinstance(episode, dict) and "report" in episode:
+                    ep_data = episode["report"]
+                else:
+                    ep_data = episode
+
+                episode_id = ep_data.get("id", str(uuid.uuid4()))
+                
+                # Create text for embedding - tags only
+                tags = ep_data.get("tags", [])
+                if not tags:
+                    logger.warning(f"No tags found for episode {episode_id}, skipping indexing")
+                    continue
+                    
+                embedding_text = " ".join(tags)
+                
+                # Generate embeddings
+                embedding_model = get_embedding_model()
+                embeddings = embedding_model.get_embeddings([embedding_text])
+                
+                if embeddings and len(embeddings) > 0:
+                    embedding_vector = embeddings[0].values
+                    
+                    # Create datapoint
+                    datapoint_id = f"{media_id}_{episode_id}"
+                    datapoint = {
+                        "datapoint_id": datapoint_id,
+                        "feature_vector": embedding_vector,
+                        "restricts": [
+                            {"namespace": "media_id", "allow_list": [media_id]},
+                            {"namespace": "child_id", "allow_list": [child_id]},
+                        ],
+                    }
+                    
+                    # Upsert to index
+                    vector_search_index.upsert_datapoints([datapoint])
+                    indexed_count += 1
+                    logger.info(f"Indexed episode {episode_id}")
+                    
+            except Exception as e:
+                logger.error(f"Failed to index episode: {e}")
+                continue
+        
+        logger.info(f"✅ Successfully indexed {indexed_count}/{len(episodes)} episodes")
+        return {
+            "status": "success",
+            "indexed_count": indexed_count,
+            "total_episodes": len(episodes),
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to index episodes: {e}")
+        return {
+            "status": "error", 
+            "error_message": f"Failed to index episodes: {str(e)}",
+        }
+
+
+def index_analysis(
+    analysis_log: Dict[str, Any],
+    media_id: str,
+    analysis_id: str,
+    child_id: str = "",
+    perspective_type: str = "",
+) -> dict:
+    """Backward compatibility: Index single analysis as episode"""
+    # Add id to the analysis if not present
+    if isinstance(analysis_log, dict):
+        if "report" in analysis_log:
+            analysis_log["report"]["id"] = analysis_id
+        else:
+            analysis_log["id"] = analysis_id
+    
+    return index_episodes(
+        episodes=[analysis_log],
+        media_id=media_id,
+        child_id=child_id,
+    )
+
+
 def save_summary(
     episode_log: Dict[str, Any],
     media_source_uri: str,
     child_id: str = "",
     user_id: str = "",
 ) -> dict:
-    """Save the episode log to Firestore"""
+    """Save the episode log to Firestore (backward compatibility)"""
     try:
         # Use provided child_id or default
         if not child_id:
@@ -291,7 +827,7 @@ def save_summary(
 def index_media_analysis(
     episode_log: Dict[str, Any], episode_id: str, child_id: str = ""
 ) -> dict:
-    """Index the episode data for vector search"""
+    """Index the episode data for vector search (backward compatibility)"""
     try:
         # Use provided child_id or default
         if not child_id:
@@ -392,14 +928,133 @@ def set_child_id(child_id: str = ""):
     return CHILD_ID
 
 
+async def analyze_perspective(
+    facts: Dict[str, Any],
+    perspective: Dict[str, Any],
+    media_id: str,
+    media_source_uri: str,
+    child_id: str,
+    child_age_months: int,
+    user_id: str,
+) -> Dict[str, Any]:
+    """Analyze a single perspective asynchronously"""
+    try:
+        # Analyze from this perspective
+        analysis_result = dynamic_multi_analyzer(facts, perspective)
+        if analysis_result.get("status") != "success":
+            logger.error(
+                f"Failed to analyze perspective {
+                    perspective['type']}: {analysis_result}"
+            )
+            return analysis_result
+
+        analysis_data = analysis_result.get("report", {})
+
+        # Save analysis
+        save_result = save_analysis(
+            analysis_data,
+            media_id=media_id,
+            media_source_uri=media_source_uri,
+            child_id=child_id,
+            child_age_months=child_age_months,
+            user_id=user_id,
+        )
+
+        if save_result.get("status") != "success":
+            logger.error(
+                f"Failed to save analysis for perspective {
+                    perspective['type']}: {save_result}"
+            )
+            return save_result
+
+        analysis_id = save_result.get("analysis_id")
+
+        # Index analysis
+        index_result = index_analysis(
+            analysis_data,
+            media_id=media_id,
+            analysis_id=analysis_id,
+            child_id=child_id,
+            perspective_type=perspective["type"],
+        )
+
+        return {
+            "status": "success",
+            "perspective_type": perspective["type"],
+            "analysis_id": analysis_id,
+            "analysis_data": analysis_data,
+            "indexed": index_result.get("status") == "success",
+        }
+
+    except Exception as e:
+        logger.error(
+            f"Error analyzing perspective {perspective.get('type', 'unknown')}: {
+                str(e)}"
+        )
+        return {
+            "status": "error",
+            "perspective_type": perspective.get("type", "unknown"),
+            "error_message": str(e),
+        }
+
+
+def calculate_age_months(birth_date: datetime) -> int:
+    """Calculate age in months from birthdate"""
+    today = datetime.now(timezone.utc)
+    months = (today.year - birth_date.year) * \
+        12 + today.month - birth_date.month
+    # Adjust if the day hasn't come yet this month
+    if today.day < birth_date.day:
+        months -= 1
+    return max(0, months)  # Ensure non-negative
+
+
+def get_child_age_months(child_id: str) -> int:
+    """Get child's age in months from Firestore"""
+    try:
+        db = get_firestore_client()
+        child_doc = db.collection("children").document(child_id).get()
+
+        if child_doc.exists:
+            child_data = child_doc.to_dict()
+            birth_date = child_data.get("birthDate")
+
+            if birth_date:
+                # birthDate is a Firestore Timestamp
+                return calculate_age_months(birth_date)
+
+        logger.warning(f"Could not find birthDate for child_id: {child_id}")
+        return 12  # Default to 12 months
+
+    except Exception as e:
+        logger.error(f"Error getting child age: {e}")
+        return 12  # Default to 12 months
+
+
 def process_media_for_cloud_function(
-    media_uri: str, user_id: str = "", child_id: str = ""
+    media_uri: str,
+    user_id: str = "",
+    child_id: str = "",
+    child_age_months: int = None,  # Auto-calculate if not provided
 ) -> Dict[str, Any]:
     """
     Cloud Functionsから呼び出せる関数
-    メディアファイルを分析し、エピソードを生成して保存する
+    メディアファイルを多角的に分析し、複数のエピソードを生成して保存する
     """
     try:
+        # Auto-calculate age if not provided
+        if child_age_months is None and child_id:
+            child_age_months = get_child_age_months(child_id)
+            logger.info(
+                f"Auto-calculated age for child {
+                    child_id}: {child_age_months} months"
+            )
+        elif child_age_months is None:
+            child_age_months = 12  # Default if no child_id
+
+        # Generate unique media ID
+        media_id = str(uuid.uuid4())
+
         # 1. 客観的事実を分析
         facts_result = objective_analyzer(media_uri)
         if facts_result.get("status") != "success":
@@ -407,32 +1062,73 @@ def process_media_for_cloud_function(
 
         facts = facts_result.get("report", {})
 
-        # 2. ハイライトを特定
-        episode_result = highlight_identifier(facts)
-        if episode_result.get("status") != "success":
-            return episode_result
+        # 2. 月齢に基づいて分析視点を決定
+        perspectives_result = perspective_determiner(facts, child_age_months)
+        if perspectives_result.get("status") != "success":
+            return perspectives_result
 
-        episode_data = episode_result.get("report", {})
+        perspectives_data = perspectives_result.get("report", {})
+        perspectives = perspectives_data.get("perspectives", [])
 
-        # 3. エピソードを保存
-        save_result = save_summary(
-            episode_data, media_uri, child_id=child_id, user_id=user_id
+        if not perspectives:
+            return {
+                "status": "error",
+                "error_message": "No perspectives determined for analysis",
+            }
+
+        logger.info(f"Determined {len(perspectives)} perspectives for analysis")
+
+        # 3. 各視点から並行して分析を実行
+        episodes = []
+        for perspective in perspectives:
+            analysis_result = dynamic_multi_analyzer(facts, perspective)
+            
+            if analysis_result.get("status") == "success":
+                analysis_data = analysis_result.get("report", {})
+                # Add perspective type to the analysis
+                analysis_data["type"] = perspective["type"]
+                analysis_data["perspective_type"] = perspective["type"]
+                episodes.append(analysis_data)
+                logger.info(f"✅ Successfully analyzed perspective: {perspective['type']}")
+            else:
+                logger.error(f"❌ Failed to analyze perspective {perspective['type']}: {analysis_result.get('error_message', 'Unknown error')}")
+
+        if not episodes:
+            return {
+                "status": "error",
+                "error_message": "Failed to generate any episodes",
+            }
+
+        # 4. Save all episodes in single document
+        save_result = save_multi_episode_analysis(
+            episodes=episodes,
+            media_id=media_id,
+            media_source_uri=media_uri,
+            child_id=child_id,
+            child_age_months=child_age_months,
+            user_id=user_id,
         )
+
         if save_result.get("status") != "success":
             return save_result
 
-        episode_id = save_result.get("episode_id")
+        # 5. Index all episodes for vector search
+        index_result = index_episodes(
+            episodes=save_result.get("episodes", []),
+            media_id=media_id,
+            child_id=child_id,
+        )
 
-        # 4. 検索用インデックス化
-        index_result = index_media_analysis(
-            episode_data, episode_id, child_id=child_id)
-
+        # Return comprehensive result
         return {
             "status": "success",
-            "episode_id": episode_id,
-            "episode_data": episode_data,
-            "objective_facts": facts,
-            "indexed": index_result.get("status") == "success",
+            "media_id": media_id,
+            "emotional_title": save_result.get("emotional_title", ""),
+            "child_age_months": child_age_months,
+            "episode_count": len(episodes),
+            "indexed_count": index_result.get("indexed_count", 0),
+            "perspectives": [ep["type"] for ep in episodes],
+            "analysis_note": perspectives_data.get("analysis_note", ""),
         }
 
     except Exception as e:
@@ -444,21 +1140,44 @@ root_agent = Agent(
     name="episode_generator_agent",
     model=MODEL_NAME,
     description="メディアファイルを分析し、構造化されたエピソードログを生成するエージェント",
-    instruction="""あなたは、メディアファイルを客観的に分析し、ハイライトシーンを特定して構造化されたエピソードログを作成するエージェントです。
+    instruction="""あなたは、メディアファイルを多角的に分析し、月齢に応じた視点から構造化されたエピソードログを作成するエージェントです。
 
-処理の流れ：
+## 標準的な処理フロー（単一エピソード生成）：
 1. objective_analyzerでメディアファイルを分析
 2. highlight_identifierでハイライトを特定してエピソードログを作成
 3. save_summaryでFirestoreに保存（episode_idが返される）
-4. index_media_analysisで保存したエピソードをベクトル検索用にインデックス化（save_summaryで取得したepisode_idを使用）
+4. index_media_analysisで保存したエピソードをベクトル検索用にインデックス化
+
+## 高度な処理フロー（多角的分析）：
+1. objective_analyzerでメディアファイルを分析
+2. perspective_determinerで月齢に基づく分析視点を決定（複数の視点が返される）
+3. 各視点に対してdynamic_multi_analyzerを個別に実行
+   - perspective_determinerの結果から各perspectiveを取り出す
+   - 各perspectiveに対してdynamic_multi_analyzerツールを個別に呼び出す
+4. save_multi_episode_analysisで全てのエピソードを1つのドキュメントに保存
+5. index_episodesで全エピソードをベクトル検索用にインデックス化
+
+**重要な実行方法：**
+- perspective_determinerで複数の視点を取得後、各視点に対して個別にdynamic_multi_analyzerを呼び出す
+- 各perspectiveオブジェクトを一つずつdynamic_multi_analyzerの引数として渡す
+- 全ての分析が完了したら、その結果をepisodesとしてリストにまとめる
+- save_multi_episode_analysisに全分析結果のリストとmedia_source_uriを渡して保存
+- 保存結果のmedia_idとepisodesを使ってindex_episodesを呼び出す
 
 注意事項：
 - child_idは環境で設定されています（デフォルト: "demo"）
+- 月齢情報がある場合は多角的分析を推奨
 - save_summaryの返り値にあるepisode_idを必ずindex_media_analysisに渡してください""",
     tools=[
         objective_analyzer,
         highlight_identifier,
         save_summary,
         index_media_analysis,
+        perspective_determiner,
+        dynamic_multi_analyzer,
+        save_analysis,
+        index_analysis,
+        save_multi_episode_analysis,
+        index_episodes,
     ],
 )
