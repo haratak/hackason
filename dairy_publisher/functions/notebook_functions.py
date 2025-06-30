@@ -3,6 +3,7 @@ Firebase Cloud Functions for Notebook Generation
 ノートブック生成機能をCloud Functionsとして提供
 """
 import os
+import base64
 from firebase_functions import firestore_fn, https_fn, options, scheduler_fn
 from firebase_functions.firestore_fn import (
     on_document_created,
@@ -11,6 +12,7 @@ from firebase_functions.firestore_fn import (
 )
 from firebase_admin import initialize_app, firestore
 from google.cloud import firestore as firestore_client
+from google.cloud import pubsub_v1
 from datetime import datetime, timedelta
 import json
 
@@ -87,8 +89,7 @@ def generate_notebook_http(req: https_fn.Request) -> https_fn.Response:
             else:
                 child_info = {"nickname": "お子さん"}
         
-        # ノートブック生成処理を実行
-        # 1. 期間とテーマを分析
+        # まず、期間とテーマを分析してnotebook_idを取得
         analysis_result = analyze_period_and_themes(
             child_id=child_id,
             start_date=start_date,
@@ -105,114 +106,53 @@ def generate_notebook_http(req: https_fn.Request) -> https_fn.Response:
                 status=500
             )
         
-        analysis_report = analysis_result["report"]
-        themes = analysis_report["themes"]
-        notebook_id = analysis_report["notebook_id"]
+        notebook_id = analysis_result["report"]["notebook_id"]
         
-        # 2. 各テーマごとにエピソードを収集してコンテンツを生成
-        topics = []
-        all_episodes_count = 0
+        # ノートブックのステータスドキュメントを作成（処理中状態）
+        notebook_ref = db.collection('children').document(child_id)\
+                         .collection('notebooks').document(notebook_id)
         
-        # レイアウトタイプの順番
-        layout_types = ["large_photo", "text_only", "small_photo", "medium_photo", "text_only"]
+        notebook_ref.set({
+            'status': 'generating',  # 生成中
+            'generation_started_at': firestore.SERVER_TIMESTAMP,
+            'period': {
+                'start': start_date,
+                'end': end_date
+            },
+            'nickname': child_info.get('nickname', 'お子さん'),
+            'topics': [],  # 後で更新される
+            'generation_progress': {
+                'current_step': 'analyzing',
+                'total_steps': 4,
+                'message': '期間とテーマを分析中...'
+            }
+        })
         
-        for i, theme in enumerate(themes):
-            # エピソードを収集
-            episodes_result = collect_episodes_by_theme(
-                theme_info=theme,
-                child_id=child_id,
-                start_date=start_date,
-                end_date=end_date
-            )
-            
-            if episodes_result.get("status") == "success":
-                episode_count = episodes_result["report"]["episode_count"]
-                all_episodes_count += episode_count
-                
-                # コンテンツを生成
-                content_result = generate_topic_content(
-                    theme_episodes=episodes_result["report"],
-                    child_info=child_info,
-                    topic_layout=layout_types[i]
-                )
-                
-                if content_result.get("status") == "success":
-                    topics.append(content_result["report"])
-                else:
-                    # エラーの場合はデフォルトコンテンツ
-                    topics.append({
-                        "title": theme["title"],
-                        "subtitle": None,
-                        "content": f"{theme['title']}に関する記録がありませんでした。",
-                        "photo": None,
-                        "caption": None,
-                        "generated": False
-                    })
-            else:
-                # エピソード収集エラーの場合はデフォルトコンテンツ
-                topics.append({
-                    "title": theme["title"],
-                    "subtitle": None,
-                    "content": f"{theme['title']}に関する記録がありませんでした。",
-                    "photo": None,
-                    "caption": None,
-                    "generated": False
-                })
+        # Pub/Subにメッセージを送信（バックグラウンド処理）
+        publisher = pubsub_v1.PublisherClient()
+        topic_path = publisher.topic_path(PROJECT_ID, 'notebook-generation')
         
-        # エピソードが1つも見つからなかった場合
-        if all_episodes_count == 0:
-            return https_fn.Response(
-                {
-                    "status": "error",
-                    "error": "指定された期間にエピソードが記録されていないため、ノートブックを生成できません。"
-                },
-                status=404
-            )
-        
-        # 3. ノートブックを検証して保存
-        notebook_data = {
-            "notebook_id": notebook_id,
-            "nickname": child_info.get("nickname", "お子さん"),
-            "period": analysis_report["period"],
-            "topics": topics
+        message_data = {
+            'child_id': child_id,
+            'start_date': start_date,
+            'end_date': end_date,
+            'child_info': child_info,
+            'notebook_id': notebook_id
         }
         
-        save_result = validate_and_save_notebook(
-            notebook_data=notebook_data,
-            child_id=child_id
+        # メッセージを送信
+        future = publisher.publish(
+            topic_path,
+            data=json.dumps(message_data).encode('utf-8')
         )
         
-        if save_result.get("status") in ["success", "partial_success"]:
-            # 生成ログを記録
-            db.collection('notebook_generation_logs').add({
-                'child_id': child_id,
-                'notebook_id': notebook_id,
-                'period': {
-                    'start': start_date,
-                    'end': end_date
-                },
-                'status': save_result["status"],
-                'valid_topics': save_result["report"]["valid_topics"],
-                'missing_topics': save_result["report"]["missing_topics"],
-                'generated_at': firestore.SERVER_TIMESTAMP,
-                'generated_by': 'http_trigger'
-            })
-            
-            return https_fn.Response({
-                'status': 'success',
-                'notebook_id': notebook_id,
-                'url': save_result["report"]["url"],
-                'valid_topics': save_result["report"]["valid_topics"],
-                'message': save_result["report"]["message"]
-            })
-        else:
-            return https_fn.Response(
-                {
-                    'status': 'error',
-                    'error': save_result.get("error_message", "Failed to save notebook")
-                },
-                status=500
-            )
+        # 非同期処理として即座にレスポンスを返す
+        return https_fn.Response({
+            'status': 'accepted',
+            'notebook_id': notebook_id,
+            'message': 'ノートブックの生成を開始しました。生成には数分かかります。',
+            'check_status_url': f'/children/{child_id}/notebooks/{notebook_id}'
+        }, status=202)  # 202 Accepted
             
     except Exception as e:
         print(f"Error generating notebook: {str(e)}")

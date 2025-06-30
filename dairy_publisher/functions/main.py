@@ -8,3 +8,4 @@ Firebase Cloud Functions エントリーポイント
 
 # ノートブック生成関数をインポート
 from notebook_functions import generate_notebook_http, generate_weekly_notebooks
+from notebook_generation_task import process_notebook_generation
