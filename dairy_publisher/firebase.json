@@ -8,7 +8,7 @@
     ],
     "rewrites": [
       {
-        "source": "/notebooks/**",
+        "source": "/children/*/notebooks/*",
         "destination": "/index.html"
       }
     ]

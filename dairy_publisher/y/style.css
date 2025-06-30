@@ -1,151 +1,200 @@
-/* リセットと基本設定 */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    line-height: 1.6;
-    color: #333;
-    background-color: #f8f9fa;
-}
-
-/* コンテナ */
-.container {
+    font-family: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', sans-serif;
     max-width: 800px;
     margin: 0 auto;
     padding: 20px;
+    background-color: #f9f9f9;
+    line-height: 1.6;
 }
 
-/* ヘッダー */
-header {
+.newsletter {
+    background-color: white;
+    padding: 30px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.header {
     text-align: center;
-    padding: 40px 0;
-    background-color: #fff;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     margin-bottom: 30px;
 }
 
-header h1 {
+.title {
     font-size: 2.5em;
-    color: #FF6B6B;
+    font-weight: bold;
+    color: #2c3e50;
+    margin: 0;
+    letter-spacing: 2px;
+}
+
+.separator {
+    border: none;
+    border-top: 2px solid #2c3e50;
+    margin: 15px 0;
+    width: 100%;
+}
+
+.date {
+    font-size: 1.1em;
+    color: #555;
+    margin: 15px 0;
+}
+
+.content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.section {
+    margin-bottom: 25px;
+}
+
+.section-title {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #2c3e50;
     margin-bottom: 10px;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 5px;
+}
+
+.photo-large {
+    width: 100%;
+    height: 200px;
+    background-color: #e8e8e8;
+    border: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.photo-small {
+    width: 100%;
+    height: 120px;
+    background-color: #e8e8e8;
+    border: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.photo-medium {
+    width: 100%;
+    height: 150px;
+    background-color: #e8e8e8;
+    border: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
 }
 
 .subtitle {
+    font-weight: bold;
+    color: #34495e;
+    margin-bottom: 8px;
+}
+
+.text {
+    font-size: 0.9em;
+    color: #555;
+    text-align: justify;
+    white-space: pre-wrap;
+}
+
+.caption {
+    font-size: 0.8em;
     color: #666;
+    font-style: italic;
+    text-align: center;
+    margin-top: 5px;
+}
+
+.left-column {
+    grid-column: 1;
+}
+
+.right-column {
+    grid-column: 2;
+}
+
+.center-section {
+    grid-column: 1 / -1;
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+}
+
+/* プレースホルダー画像の表示 */
+.photo-large:empty::before,
+.photo-small:empty::before,
+.photo-medium:empty::before {
+    content: '';
+    color: #999;
+    font-size: 0.9em;
+}
+
+/* ローディング画面 */
+.loading {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #f9f9f9;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.loading-content {
+    text-align: center;
+}
+
+.loading-spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #2c3e50;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading p {
+    color: #555;
     font-size: 1.1em;
 }
 
-/* メインコンテンツ */
-main {
-    background-color: #fff;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    padding: 30px;
-}
-
-/* セクション共通 */
-section {
-    margin-bottom: 40px;
-}
-
-section:last-child {
-    margin-bottom: 0;
-}
-
-section h2 {
-    font-size: 1.8em;
-    color: #4ECDC4;
-    margin-bottom: 20px;
-    padding-bottom: 10px;
-    border-bottom: 2px solid #4ECDC4;
-}
-
-/* ストーリーセクション */
-.story-content {
-    background-color: #f8f9fa;
-    padding: 20px;
-    border-radius: 8px;
-}
-
-.story-content p {
-    margin-bottom: 15px;
-}
-
-.story-content p:last-child {
-    margin-bottom: 0;
-}
-
-/* 写真セクション */
-.photo-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 20px;
-}
-
-.photo-item {
-    text-align: center;
-}
-
-.photo-item img {
-    width: 100%;
-    height: auto;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.photo-caption {
-    margin-top: 10px;
-    font-size: 0.9em;
-    color: #666;
-}
-
-/* メッセージセクション */
-.message-content {
-    background-color: #FFE66D;
-    padding: 25px;
-    border-radius: 8px;
-    position: relative;
-}
-
-.message-content p {
-    margin-bottom: 15px;
-}
-
-.message-author {
-    text-align: right;
-    font-style: italic;
-    color: #666;
-    margin-bottom: 0 !important;
-}
-
-/* フッター */
-footer {
-    text-align: center;
-    padding: 30px 0;
-    color: #666;
-    font-size: 0.9em;
-}
-
-/* レスポンシブ対応 */
 @media (max-width: 600px) {
-    header h1 {
+    .content {
+        grid-template-columns: 1fr;
+    }
+    
+    .left-column, .right-column, .center-section {
+        grid-column: 1;
+    }
+    
+    .title {
         font-size: 2em;
-    }
-    
-    section h2 {
-        font-size: 1.5em;
-    }
-    
-    .container {
-        padding: 10px;
-    }
-    
-    main {
-        padding: 20px;
     }
 }
