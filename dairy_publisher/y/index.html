@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>成長記録</title>
+    <link rel="stylesheet" href="/style.css">
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>成長記録</h1>
+            <p class="subtitle">データを読み込んでいます...</p>
+        </header>
+        
+        <main>
+            <section class="story-section">
+                <h2>今月のできごと</h2>
+                <div class="story-content">
+                    <p>データを読み込んでいます...</p>
+                </div>
+            </section>
+            
+            <section class="photo-section">
+                <h2>思い出の写真</h2>
+                <div class="photo-grid">
+                    <!-- 写真はJavaScriptで動的に追加されます -->
+                </div>
+            </section>
+            
+            <section class="message-section">
+                <h2>先生からのメッセージ</h2>
+                <div class="message-content">
+                    <p>データを読み込んでいます...</p>
+                </div>
+            </section>
+        </main>
+        
+        <footer>
+            <p>&copy; 2024 <span id="footer-title">成長記録</span></p>
+        </footer>
+    </div>
+
+    <script>
+        // Firebase設定
+        const firebaseConfig = {
+            projectId: "hackason-464007",
+            appId: "1:431161319367:web:a2c073c100408c4d4003e2",
+            storageBucket: "hackason-464007.firebasestorage.app",
+            apiKey: "AIzaSyBWv5BMiITRLDf9pECDfa5qgNMboYgFZbo",
+            authDomain: "hackason-464007.firebaseapp.com",
+            messagingSenderId: "431161319367",
+            measurementId: "G-W4KJYT1HB4"
+        };
+
+        // Firebase初期化
+        try {
+            firebase.initializeApp(firebaseConfig);
+            console.log('Firebase initialized successfully');
+        } catch (error) {
+            console.error('Firebase initialization error:', error);
+        }
+        
+        const db = firebase.firestore();
+
+        // URLからnotebook IDを取得
+        function getNotebookIdFromUrl() {
+            const path = window.location.pathname;
+            const match = path.match(/\/notebooks\/(.+)/);
+            return match ? match[1] : null;
+        }
+
+        // ページ内容を更新
+        function updatePageContent(data) {
+            // タイトル更新
+            document.querySelector('header h1').textContent = data.title || 'データが見つかりません';
+            document.querySelector('header .subtitle').textContent = data.subtitle || '';
+            document.querySelector('title').textContent = data.title || '成長記録';
+            document.querySelector('#footer-title').textContent = data.title || '成長記録';
+            
+            // ストーリーセクション更新
+            if (data.story) {
+                document.querySelector('.story-section h2').textContent = data.story.title || '今月のできごと';
+                const storyContent = document.querySelector('.story-content');
+                if (data.story.content && Array.isArray(data.story.content)) {
+                    storyContent.innerHTML = data.story.content.map(p => `<p>${p}</p>`).join('');
+                }
+            }
+            
+            // 写真セクション更新
+            if (data.photos && Array.isArray(data.photos)) {
+                const photoGrid = document.querySelector('.photo-grid');
+                photoGrid.innerHTML = data.photos.map(photo => `
+                    <div class="photo-item">
+                        <img src="${photo.url}" alt="${photo.caption || '写真'}">
+                        <p class="photo-caption">${photo.caption || ''}</p>
+                    </div>
+                `).join('');
+            }
+            
+            // メッセージセクション更新
+            if (data.message) {
+                const messageContent = document.querySelector('.message-content');
+                let messageHtml = '';
+                if (data.message.content && Array.isArray(data.message.content)) {
+                    messageHtml = data.message.content.map(p => `<p>${p}</p>`).join('');
+                }
+                if (data.message.author) {
+                    messageHtml += `<p class="message-author">— ${data.message.author}</p>`;
+                }
+                messageContent.innerHTML = messageHtml;
+            }
+        }
+
+        // Firestoreからデータを取得
+        async function loadNotebookData(notebookId) {
+            try {
+                console.log(`Loading notebook: ${notebookId}`);
+                const doc = await db.collection('notebooks').doc(notebookId).get();
+                if (doc.exists) {
+                    const data = doc.data();
+                    console.log('Document found:', data);
+                    console.log('Title:', data.title);
+                    console.log('Subtitle:', data.subtitle);
+                    return data;
+                } else {
+                    console.log('Document not found');
+                    return null;
+                }
+            } catch (error) {
+                console.error('Error loading data:', error);
+                console.error('Error details:', error.message, error.code);
+                return null;
+            }
+        }
+
+        // エラー表示
+        function showError() {
+            document.querySelector('header h1').textContent = 'データが見つかりません';
+            document.querySelector('header .subtitle').textContent = '指定された連絡帳は存在しません';
+            document.querySelector('.story-content').innerHTML = '<p>データの読み込みに失敗しました。</p>';
+            document.querySelector('.photo-grid').innerHTML = '';
+            document.querySelector('.message-content').innerHTML = '<p>URLを確認してください。</p>';
+        }
+
+        // ページ読み込み時の処理
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('Page loaded. Current URL:', window.location.href);
+            const notebookId = getNotebookIdFromUrl();
+            console.log('Extracted notebook ID:', notebookId);
+            
+            if (notebookId) {
+                // ローディング表示
+                document.querySelector('header h1').textContent = 'データを読み込んでいます...';
+                
+                // Firestoreからデータを取得して表示
+                const data = await loadNotebookData(notebookId);
+                if (data) {
+                    updatePageContent(data);
+                } else {
+                    showError();
+                }
+            } else {
+                // notebook IDがない場合はデフォルトのまま表示
+                console.log('No notebook ID in URL. Showing default content.');
+            }
+        });
+    </script>
+</body>
+</html>
