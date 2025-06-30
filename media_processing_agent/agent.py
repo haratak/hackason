@@ -495,51 +495,61 @@ def highlight_identifier(facts: Dict[str, Any]) -> dict:
 def generate_emotional_title(episodes: List[Dict[str, Any]]) -> str:
     """Generate an emotional title for timeline display (15-20 chars)"""
     try:
-        # Collect key moments from all episodes
-        key_moments = []
+        # エピソードから具体的な情報を収集
+        locations = []
+        actions = []
         emotions = []
+        objects = []
         
         for episode in episodes:
             if isinstance(episode, dict):
-                title = episode.get("title", "")
                 summary = episode.get("summary", "")
                 tags = episode.get("tags", episode.get("vector_tags", []))
                 
-                # Extract emotional keywords
-                if "初めて" in title or "初めて" in summary:
-                    key_moments.append("初めて")
-                if "笑顔" in title or "笑顔" in summary or "笑う" in summary:
-                    emotions.append("笑顔")
-                if "成長" in title or "成長" in summary:
-                    key_moments.append("成長")
-                if "楽しい" in summary or "楽しそう" in summary:
-                    emotions.append("楽しい")
-                if "できた" in summary or "成功" in summary:
-                    key_moments.append("できた")
+                # 場所やイベントの抽出
+                for place in ["公園", "お祭り", "家", "おうち", "外", "部屋", "庭", "海", "山", "川"]:
+                    if place in summary:
+                        locations.append(place)
                 
-                # Check tags for emotions
+                # 具体的な行動の抽出
+                for action in ["遊ぶ", "笑う", "走る", "歩く", "食べる", "飲む", "見る", "持つ", "触る"]:
+                    if action in summary:
+                        actions.append(action)
+                
+                # 感情の抽出
+                if "笑顔" in summary or "楽しい" in summary or "嬉しい" in summary:
+                    emotions.append("楽しい")
+                if "真剣" in summary or "集中" in summary:
+                    emotions.append("夢中")
+                
+                # 具体的な物の抽出（タグから）
                 for tag in tags:
-                    if "喜び" in tag or "楽しい" in tag:
-                        emotions.append("キラキラ")
-                    if "挑戦" in tag:
-                        key_moments.append("挑戦")
+                    # 物や具体的な要素を含むタグを探す
+                    if any(item in tag for item in ["ボトル", "おもちゃ", "本", "ボール", "いちご", "食べ物"]):
+                        objects.append(tag)
         
-        # Generate title based on collected data
+        # タイトル生成用のプロンプト作成
         vertexai.init(project=get_project_id(), location=get_location())
         model = GenerativeModel(MODEL_NAME)
         
         prompt = f"""
-以下のキーワードを元に、子供の成長記録のタイムライン表示用の短いタイトルを生成してください。
+この写真が捉えた情景やシーンを表すタイトルを作成してください。
+子供が何をしているかではなく、どんな情景・雰囲気の場面なのかに焦点を当ててください。
 
-要件：
-- 15-20文字以内（絵文字含む）
-- 感情的で前向きな表現
-- 親が見て嬉しくなるような内容
-- 絵文字を1-2個使用
+【観察された要素】
+- 場所: {', '.join(locations[:2]) if locations else '日常の空間'}
+- 行動: {', '.join(actions[:3]) if actions else '遊んでいる'}
+- 雰囲気: {', '.join(emotions[:2]) if emotions else '静かな時間'}
+- 物や環境: {', '.join(objects[:2]) if objects else ''}
 
-キーワード：
-- キーモーメント: {', '.join(key_moments[:3]) if key_moments else '日常の一コマ'}
-- 感情: {', '.join(emotions[:3]) if emotions else '穏やか'}
+【タイトルの方向性】
+- 「どんなシーン・情景か」を表現する
+- 子供の動作より、その場の雰囲気や情景を捕える
+- シンプルで素直な言葉で表現
+
+【要件】
+- 20文字以内（絵文字含む）
+- 絵文字1個
 
 タイトルのみを出力してください。
 """
@@ -547,15 +557,11 @@ def generate_emotional_title(episodes: List[Dict[str, Any]]) -> str:
         response = model.generate_content(prompt)
         emotional_title = response.text.strip()
         
-        # Fallback if generation fails or is too long
-        if len(emotional_title) > 20 or len(emotional_title) < 10:
-            emotional_title = "✨今日も元気いっぱい！"
-        
         return emotional_title
         
     except Exception as e:
         logger.error(f"Failed to generate emotional title: {e}")
-        return "🌟すくすく成長中！"
+        return "🌈きょうのできごと"
 
 
 def save_multi_episode_analysis(
@@ -565,6 +571,7 @@ def save_multi_episode_analysis(
     child_id: str = "",
     child_age_months: int = 0,
     user_id: str = "",
+    captured_at: datetime = None,
 ) -> dict:
     """Save multiple episodes as nested array in a single media document"""
     try:
@@ -620,10 +627,11 @@ def save_multi_episode_analysis(
             "episode_count": len(episodes_data),
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc),
+            "captured_at": captured_at if captured_at else datetime.now(timezone.utc),  # Use provided captured_at or current time
         }
 
         # Save to Firestore
-        media_ref = db.collection("media").document(media_id)
+        media_ref = db.collection("analysis_results").document(media_id)
         media_ref.set(media_data)
 
         logger.info(f"✅ Successfully saved {len(episodes_data)} episodes for media: {media_id}")
@@ -651,6 +659,7 @@ def save_analysis(
     child_id: str = "",
     child_age_months: int = 0,
     user_id: str = "",
+    captured_at: datetime = None,
 ) -> dict:
     """Backward compatibility: Save single analysis as episode"""
     return save_multi_episode_analysis(
@@ -660,6 +669,7 @@ def save_analysis(
         child_id=child_id,
         child_age_months=child_age_months,
         user_id=user_id,
+        captured_at=captured_at,
     )
 
 
@@ -667,6 +677,7 @@ def index_episodes(
     episodes: List[Dict[str, Any]], 
     media_id: str,
     child_id: str = "",
+    captured_at: datetime = None,
 ) -> dict:
     """Index multiple episodes for vector search"""
     try:
@@ -715,6 +726,13 @@ def index_episodes(
                             {"namespace": "child_id", "allow_list": [child_id]},
                         ],
                     }
+                    
+                    # Add captured_at timestamp if provided
+                    if captured_at:
+                        captured_at_timestamp = int(captured_at.timestamp())
+                        datapoint["numeric_restricts"] = [
+                            {"namespace": "captured_at", "value_int": captured_at_timestamp}
+                        ]
                     
                     # Upsert to index
                     vector_search_index.upsert_datapoints([datapoint])
@@ -885,7 +903,9 @@ def index_media_analysis(
                 episode_id}..."
         )
 
-        # Get created_at timestamp as Unix timestamp (seconds since epoch)
+        # Get captured_at timestamp as Unix timestamp (seconds since epoch)
+        # Note: This function is deprecated and doesn't have access to captured_at
+        # Using created_at as fallback for backward compatibility
         created_at = datetime.now(timezone.utc)
         created_at_timestamp = int(created_at.timestamp())
 
@@ -898,7 +918,7 @@ def index_media_analysis(
                     "feature_vector": vector,
                     "restricts": [{"namespace": "child_id", "allow_list": [child_id]}],
                     "numeric_restricts": [
-                        {"namespace": "created_at",
+                        {"namespace": "captured_at",  # Changed from created_at to captured_at
                             "value_int": created_at_timestamp}
                     ],
                 }
@@ -1036,6 +1056,7 @@ def process_media_for_cloud_function(
     user_id: str = "",
     child_id: str = "",
     child_age_months: int = None,  # Auto-calculate if not provided
+    captured_at: datetime = None,  # Media capture date/time
 ) -> Dict[str, Any]:
     """
     Cloud Functionsから呼び出せる関数
@@ -1107,6 +1128,7 @@ def process_media_for_cloud_function(
             child_id=child_id,
             child_age_months=child_age_months,
             user_id=user_id,
+            captured_at=captured_at,
         )
 
         if save_result.get("status") != "success":
@@ -1117,6 +1139,7 @@ def process_media_for_cloud_function(
             episodes=save_result.get("episodes", []),
             media_id=media_id,
             child_id=child_id,
+            captured_at=captured_at,
         )
 
         # Return comprehensive result

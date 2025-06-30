@@ -22,7 +22,10 @@ class MediaUpload {
   final String? originalFilename;
   final String? processingError;
   final DateTime? processedAt;
-  final String? episodeId;
+  final String? episodeId;  // 後方互換性のため保持（非推奨）
+  final String? mediaId;  // 新しいanalysis_resultsのID
+  final String? emotionalTitle;  // タイムライン表示用のタイトル
+  final int? episodeCount;  // 生成されたエピソード数
   final Map<String, dynamic>? customMetadata;
   final String visibility;
   final List<String> sharedWith;
@@ -49,6 +52,9 @@ class MediaUpload {
     this.processingError,
     this.processedAt,
     this.episodeId,
+    this.mediaId,
+    this.emotionalTitle,
+    this.episodeCount,
     this.customMetadata,
     this.visibility = 'private',
     this.sharedWith = const [],
@@ -79,6 +85,9 @@ class MediaUpload {
           ? (json['processed_at'] as Timestamp).toDate() 
           : null,
       episodeId: json['episode_id'] as String?,
+      mediaId: json['media_id'] as String?,
+      emotionalTitle: json['emotional_title'] as String?,
+      episodeCount: json['episode_count'] as int?,
       customMetadata: json['custom_metadata'] as Map<String, dynamic>?,
       visibility: json['visibility'] as String? ?? 'private',
       sharedWith: (json['shared_with'] as List<dynamic>?)?.cast<String>() ?? [],
@@ -111,6 +120,9 @@ class MediaUpload {
       if (processingError != null) 'processing_error': processingError,
       if (processedAt != null) 'processed_at': Timestamp.fromDate(processedAt!),
       if (episodeId != null) 'episode_id': episodeId,
+      if (mediaId != null) 'media_id': mediaId,
+      if (emotionalTitle != null) 'emotional_title': emotionalTitle,
+      if (episodeCount != null) 'episode_count': episodeCount,
       if (customMetadata != null) 'custom_metadata': customMetadata,
       'visibility': visibility,
       'shared_with': sharedWith,
@@ -165,6 +177,9 @@ class MediaUpload {
     String? processingError,
     DateTime? processedAt,
     String? episodeId,
+    String? mediaId,
+    String? emotionalTitle,
+    int? episodeCount,
     Map<String, dynamic>? customMetadata,
     String? visibility,
     List<String>? sharedWith,
@@ -190,6 +205,9 @@ class MediaUpload {
       processingError: processingError ?? this.processingError,
       processedAt: processedAt ?? this.processedAt,
       episodeId: episodeId ?? this.episodeId,
+      mediaId: mediaId ?? this.mediaId,
+      emotionalTitle: emotionalTitle ?? this.emotionalTitle,
+      episodeCount: episodeCount ?? this.episodeCount,
       customMetadata: customMetadata ?? this.customMetadata,
       visibility: visibility ?? this.visibility,
       sharedWith: sharedWith ?? this.sharedWith,
