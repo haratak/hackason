@@ -48,8 +48,10 @@ class AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
-    
-    debugPrint('AuthWrapper: isAuthenticated = ${authProvider.isAuthenticated}');
+
+    debugPrint(
+      'AuthWrapper: isAuthenticated = ${authProvider.isAuthenticated}',
+    );
     debugPrint('AuthWrapper: user = ${authProvider.user?.uid}');
 
     if (authProvider.isAuthenticated) {
@@ -87,7 +89,7 @@ class _SetupCheckerState extends State<SetupChecker> {
     debugPrint('SetupChecker: Loading user family...');
     await familyProvider.loadUserFamily();
     debugPrint('SetupChecker: hasFamily = ${familyProvider.hasFamily}');
-    
+
     if (familyProvider.hasFamily) {
       debugPrint('SetupChecker: Loading children...');
       await childrenProvider.loadChildren();
