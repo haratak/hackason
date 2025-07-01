@@ -4,8 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:mobile/models/media_upload.dart';
-import 'package:mobile/models/notebook.dart';
+import 'package:kids_diary/models/media_upload.dart';
+import 'package:kids_diary/models/notebook.dart';
 
 class NotebookService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -121,9 +121,12 @@ class NotebookService {
       for (final doc in querySnapshot.docs) {
         try {
           debugPrint('Processing notebook document: ${doc.id}');
+          debugPrint('  Document data: ${doc.data()}');
           final notebook = Notebook.fromJson(doc.data(), doc.id);
           notebooks.add(notebook);
           debugPrint('Successfully parsed notebook: ${notebook.id}');
+          debugPrint('  Notebook date: ${notebook.date}');
+          debugPrint('  Notebook period: ${notebook.period.start} - ${notebook.period.end}');
         } catch (parseError, parseStackTrace) {
           debugPrint('=== NOTEBOOK PARSE ERROR ===');
           debugPrint('Document ID: ${doc.id}');
@@ -184,6 +187,18 @@ class NotebookService {
           (snapshot) => snapshot.docs
               .map((doc) => Notebook.fromJson(doc.data(), doc.id))
               .toList(),
+        );
+  }
+
+  /// ノートブックのIDのみをリアルタイムで監視（軽量版）
+  Stream<Set<String>> watchChildNotebookIds(String childId) {
+    return _firestore
+        .collection('children')
+        .doc(childId)
+        .collection('notebooks')
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs.map((doc) => doc.id).toSet(),
         );
   }
 
@@ -339,14 +354,15 @@ class NotebookService {
     final now = DateTime.now();
     final weeks = <WeekInfo>[];
 
-    // 既存のノートブックを取得
-    final existingNotebooks = await getChildNotebooks(childId);
-    final notebookMap = <String, Notebook>{};
-
-    for (final notebook in existingNotebooks) {
-      // ノートブックIDから週を特定（例: 2024_06_week4）
-      notebookMap[notebook.id] = notebook;
-    }
+    // 既存のノートブックIDのみを取得（軽量版）
+    final notebookIdsSnapshot = await _firestore
+        .collection('children')
+        .doc(childId)
+        .collection('notebooks')
+        .get();
+    
+    final existingNotebookIds = notebookIdsSnapshot.docs.map((doc) => doc.id).toSet();
+    debugPrint('Found ${existingNotebookIds.length} existing notebooks');
 
     // 過去数週間の情報を生成
     for (var i = 0; i < weeksCount; i++) {
@@ -354,13 +370,15 @@ class NotebookService {
       final weekStart = getWeekStart(weekDate);
       final weekEnd = getWeekEnd(weekDate);
 
-      // ノートブックIDを生成（推測）
-      final year = weekStart.year;
-      final month = weekStart.month.toString().padLeft(2, '0');
-      final weekNumber = _getWeekNumber(weekStart);
-      final expectedNotebookId = '${year}_${month}_week$weekNumber';
-
-      final existingNotebook = notebookMap[expectedNotebookId];
+      // ノートブックIDを生成（バックエンドの実装に合わせる）
+      // 形式: {child_id}_{start_date}_notebook
+      final startDateStr = '${weekStart.year}_${weekStart.month.toString().padLeft(2, '0')}_${weekStart.day.toString().padLeft(2, '0')}';
+      final expectedNotebookId = '${childId}_${startDateStr}_notebook';
+      
+      debugPrint('Week $i: expectedNotebookId = $expectedNotebookId');
+      
+      // ノートブックが存在するかチェック
+      final hasNotebook = existingNotebookIds.contains(expectedNotebookId);
 
       // その週のメディアを取得
       final weekMedia = await getWeekMedia(
@@ -377,7 +395,8 @@ class NotebookService {
           canGenerate:
               weekEnd.isBefore(now) &&
               weekMedia.isNotEmpty, // 過去の週でメディアがある場合のみ生成可能
-          notebook: existingNotebook,
+          hasNotebook: hasNotebook,
+          notebookId: hasNotebook ? expectedNotebookId : null,
           weekMedia: weekMedia,
         ),
       );
@@ -391,20 +410,34 @@ class WeekInfo {
   final DateTime weekStart;
   final DateTime weekEnd;
   final String title;
-  final Notebook? notebook;
   final bool canGenerate;
+  final bool hasNotebook;
+  final String? notebookId;
   final List<MediaUpload> weekMedia;
+  
+  // 遅延読み込み用
+  Notebook? _notebook;
+  bool _notebookLoaded = false;
 
   WeekInfo({
     required this.weekStart,
     required this.weekEnd,
     required this.title,
     required this.canGenerate,
-    this.notebook,
+    required this.hasNotebook,
+    this.notebookId,
     this.weekMedia = const [],
   });
 
-  bool get hasNotebook => notebook != null;
+  Notebook? get notebook => _notebook;
+  
+  set notebook(Notebook? value) {
+    _notebook = value;
+    _notebookLoaded = true;
+  }
+  
+  bool get notebookLoaded => _notebookLoaded;
+  
   bool get isCurrentWeek {
     final now = DateTime.now();
     return weekStart.isBefore(now) && weekEnd.isAfter(now);

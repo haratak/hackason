@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:mobile/screens/settings_screen.dart';
-import 'package:mobile/screens/unified_timeline_screen.dart';
-import 'package:mobile/screens/weekly_notebook_screen.dart';
+import 'package:kids_diary/screens/settings_screen.dart';
+import 'package:kids_diary/screens/unified_timeline_screen.dart';
+import 'package:kids_diary/screens/weekly_notebook_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

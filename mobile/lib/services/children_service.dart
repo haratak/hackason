@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:mobile/models/child.dart';
-import 'package:mobile/services/family_service.dart';
+import 'package:kids_diary/models/child.dart';
+import 'package:kids_diary/services/family_service.dart';
 
 class ChildrenService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;

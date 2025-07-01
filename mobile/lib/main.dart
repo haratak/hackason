@@ -1,13 +1,13 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:mobile/firebase_options.dart';
-import 'package:mobile/providers/auth_provider.dart';
-import 'package:mobile/providers/children_provider.dart';
-import 'package:mobile/providers/family_provider.dart';
-import 'package:mobile/providers/storage_provider.dart';
-import 'package:mobile/screens/home_screen.dart';
-import 'package:mobile/screens/login_screen.dart';
-import 'package:mobile/screens/setup_screen.dart';
+import 'package:kids_diary/firebase_options.dart';
+import 'package:kids_diary/providers/auth_provider.dart';
+import 'package:kids_diary/providers/children_provider.dart';
+import 'package:kids_diary/providers/family_provider.dart';
+import 'package:kids_diary/providers/storage_provider.dart';
+import 'package:kids_diary/screens/home_screen.dart';
+import 'package:kids_diary/screens/login_screen.dart';
+import 'package:kids_diary/screens/setup_screen.dart';
 import 'package:provider/provider.dart';
 
 void main() async {
@@ -31,7 +31,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ChildrenProvider()),
       ],
       child: MaterialApp(
-        title: '連絡帳クライアント',
+        title: 'おまかせダイアリー',
+        debugShowCheckedModeBanner: false,
         theme: ThemeData(
           primarySwatch: Colors.blue,
           useMaterial3: true,
@@ -48,8 +49,10 @@ class AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
-    
-    debugPrint('AuthWrapper: isAuthenticated = ${authProvider.isAuthenticated}');
+
+    debugPrint(
+      'AuthWrapper: isAuthenticated = ${authProvider.isAuthenticated}',
+    );
     debugPrint('AuthWrapper: user = ${authProvider.user?.uid}');
 
     if (authProvider.isAuthenticated) {
@@ -87,7 +90,7 @@ class _SetupCheckerState extends State<SetupChecker> {
     debugPrint('SetupChecker: Loading user family...');
     await familyProvider.loadUserFamily();
     debugPrint('SetupChecker: hasFamily = ${familyProvider.hasFamily}');
-    
+
     if (familyProvider.hasFamily) {
       debugPrint('SetupChecker: Loading children...');
       await childrenProvider.loadChildren();
