@@ -1,16 +1,18 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'package:mobile/models/child.dart';
-import 'package:mobile/models/episode.dart';
-import 'package:mobile/models/media_upload.dart';
-import 'package:mobile/providers/children_provider.dart';
-import 'package:mobile/providers/family_provider.dart';
-import 'package:mobile/providers/storage_provider.dart';
-import 'package:mobile/screens/home_screen.dart';
-import 'package:mobile/services/episode_service.dart';
-import 'package:mobile/services/media_upload_service.dart';
+import 'package:kids_diary/models/analysis_result.dart';
+import 'package:kids_diary/models/child.dart';
+import 'package:kids_diary/models/media_upload.dart';
+import 'package:kids_diary/providers/children_provider.dart';
+import 'package:kids_diary/providers/family_provider.dart';
+import 'package:kids_diary/providers/storage_provider.dart';
+import 'package:kids_diary/screens/home_screen.dart';
+import 'package:kids_diary/services/analysis_result_service.dart';
+import 'package:kids_diary/services/media_upload_service.dart';
+import 'package:kids_diary/services/video_thumbnail_service.dart';
 import 'package:provider/provider.dart';
 
 class UnifiedTimelineScreen extends StatefulWidget {
@@ -22,11 +24,12 @@ class UnifiedTimelineScreen extends StatefulWidget {
 
 class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
   final MediaUploadService _mediaUploadService = MediaUploadService();
-  final EpisodeService _episodeService = EpisodeService();
+  final AnalysisResultService _analysisResultService = AnalysisResultService();
+  final VideoThumbnailService _thumbnailService = VideoThumbnailService();
   List<MediaUpload> _mediaUploads = [];
-  Map<String, Episode> _episodesMap = {};
+  Map<String, AnalysisResult> _analysisResultsMap = {};
   bool _isLoading = true;
-  
+
   @override
   void initState() {
     super.initState();
@@ -34,38 +37,41 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
       _loadData();
     });
   }
-  
+
   Future<void> _loadData() async {
     try {
       setState(() {
         _isLoading = true;
       });
-      
+
       // Load media uploads
       final mediaUploads = await _mediaUploadService.getUserMediaUploads();
-      
+
       // Sort by captured date (newest first)
       mediaUploads.sort((a, b) {
         final dateA = a.capturedAt ?? a.uploadedAt ?? DateTime.now();
         final dateB = b.capturedAt ?? b.uploadedAt ?? DateTime.now();
         return dateB.compareTo(dateA);
       });
-      
-      // Load episodes for completed media uploads
-      final episodesMap = <String, Episode>{};
+
+      // Load analysis results for completed media uploads
+      final analysisResultsMap = <String, AnalysisResult>{};
       for (final upload in mediaUploads) {
-        if (upload.episodeId != null) {
-          final episode = await _episodeService.getEpisode(upload.episodeId!);
-          if (episode != null) {
-            episodesMap[upload.episodeId!] = episode;
+        // 新しいmedia_idがある場合は優先
+        if (upload.mediaId != null) {
+          final analysisResult = await _analysisResultService.getAnalysisResult(
+            upload.mediaId!,
+          );
+          if (analysisResult != null) {
+            analysisResultsMap[upload.mediaId!] = analysisResult;
           }
         }
       }
-      
+
       if (mounted) {
         setState(() {
           _mediaUploads = mediaUploads;
-          _episodesMap = episodesMap;
+          _analysisResultsMap = analysisResultsMap;
           _isLoading = false;
         });
       }
@@ -78,13 +84,13 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
       }
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final familyProvider = context.watch<FamilyProvider>();
     final childrenProvider = context.watch<ChildrenProvider>();
     final storageProvider = context.watch<StorageProvider>();
-    
+
     // Check if family and children are registered
     if (!familyProvider.hasFamily || !childrenProvider.hasChildren) {
       return Scaffold(
@@ -130,7 +136,7 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
         ),
       );
     }
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('タイムライン'),
@@ -148,7 +154,6 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
               },
               itemBuilder: (context) => [
                 const PopupMenuItem<String?>(
-                  value: null,
                   child: Text('全員'),
                 ),
                 ...childrenProvider.children.map<PopupMenuItem<String?>>(
@@ -166,19 +171,20 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
         child: _buildContent(childrenProvider),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _uploadPhotos(context, storageProvider, childrenProvider),
+        onPressed: () =>
+            _uploadPhotos(context, storageProvider, childrenProvider),
         child: const Icon(Icons.add_photo_alternate),
       ),
     );
   }
-  
+
   Widget _buildContent(ChildrenProvider childrenProvider) {
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(),
       );
     }
-    
+
     if (_mediaUploads.isEmpty) {
       return Center(
         child: Column(
@@ -211,22 +217,22 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
         ),
       );
     }
-    
+
     // Group media uploads by date
     final groupedUploads = <String, List<MediaUpload>>{};
     final dateKeys = <String, DateTime>{};
-    
+
     for (final upload in _mediaUploads) {
       final date = upload.capturedAt ?? upload.uploadedAt ?? DateTime.now();
       final dateKey = _getDateKey(date);
-      
+
       if (!groupedUploads.containsKey(dateKey)) {
         groupedUploads[dateKey] = [];
         dateKeys[dateKey] = date;
       }
       groupedUploads[dateKey]!.add(upload);
     }
-    
+
     // Sort date keys (newest first)
     final sortedDateKeys = groupedUploads.keys.toList()
       ..sort((a, b) {
@@ -234,7 +240,7 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
         final dateB = dateKeys[b]!;
         return dateB.compareTo(dateA);
       });
-    
+
     return CustomScrollView(
       slivers: [
         for (final dateKey in sortedDateKeys) ...[
@@ -267,12 +273,14 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
             delegate: SliverChildBuilderDelegate(
               (context, index) {
                 final mediaUpload = groupedUploads[dateKey]![index];
-                final episode = mediaUpload.episodeId != null 
-                    ? _episodesMap[mediaUpload.episodeId!] 
+                final analysisResult = mediaUpload.mediaId != null
+                    ? _analysisResultsMap[mediaUpload.mediaId!]
                     : null;
-                final child = childrenProvider.getChildById(mediaUpload.childId);
-                
-                return _buildTimelineItem(mediaUpload, episode, child);
+                final child = childrenProvider.getChildById(
+                  mediaUpload.childId,
+                );
+
+                return _buildTimelineItem(mediaUpload, analysisResult, child);
               },
               childCount: groupedUploads[dateKey]!.length,
             ),
@@ -281,21 +289,21 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
       ],
     );
   }
-  
+
   Widget _buildTimelineItem(
     MediaUpload mediaUpload,
-    Episode? episode,
+    AnalysisResult? analysisResult,
     Child? child,
   ) {
-    final displayDate = mediaUpload.capturedAt ?? mediaUpload.uploadedAt ?? DateTime.now();
-    
+    final displayDate =
+        mediaUpload.capturedAt ?? mediaUpload.uploadedAt ?? DateTime.now();
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(
           bottom: BorderSide(
             color: Colors.grey[200]!,
-            width: 1,
           ),
         ),
       ),
@@ -325,36 +333,42 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
                           ),
                         );
                       }
-                      
+
+                      // 動画の場合はサムネイルを表示
                       if (mediaUpload.mediaType == MediaType.video) {
-                        // Video placeholder with play button
-                        return Container(
-                          color: Colors.black87,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              Icon(
-                                Icons.videocam,
-                                color: Colors.grey[600],
-                                size: 36,
-                              ),
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.9),
-                                  shape: BoxShape.circle,
+                        return FutureBuilder<Uint8List?>(
+                          future: _thumbnailService.getThumbnail(snapshot.data!),
+                          builder: (context, thumbnailSnapshot) {
+                            return Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                if (thumbnailSnapshot.hasData && thumbnailSnapshot.data != null)
+                                  Image.memory(
+                                    thumbnailSnapshot.data!,
+                                    fit: BoxFit.cover,
+                                  )
+                                else
+                                  const ColoredBox(
+                                    color: Colors.black,
+                                    child: Icon(
+                                      Icons.video_library,
+                                      color: Colors.white,
+                                      size: 32,
+                                    ),
+                                  ),
+                                const Positioned.fill(
+                                  child: Icon(
+                                    Icons.play_circle_outline,
+                                    color: Colors.white,
+                                    size: 40,
+                                  ),
                                 ),
-                                padding: const EdgeInsets.all(8),
-                                child: const Icon(
-                                  Icons.play_arrow,
-                                  color: Colors.black87,
-                                  size: 24,
-                                ),
-                              ),
-                            ],
-                          ),
+                              ],
+                            );
+                          },
                         );
                       } else {
-                        // Image thumbnail
+                        // 画像の場合はそのまま表示
                         return Image.network(
                           snapshot.data!,
                           fit: BoxFit.cover,
@@ -417,8 +431,10 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
                     ),
                     const SizedBox(height: 8),
                     // Title or status
-                    if (mediaUpload.processingStatus == ProcessingStatus.pending ||
-                        mediaUpload.processingStatus == ProcessingStatus.processing)
+                    if (mediaUpload.processingStatus ==
+                            ProcessingStatus.pending ||
+                        mediaUpload.processingStatus ==
+                            ProcessingStatus.processing)
                       Row(
                         children: [
                           SizedBox(
@@ -442,9 +458,21 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
                           ),
                         ],
                       )
-                    else if (episode != null)
+                    else if (analysisResult != null)
                       Text(
-                        episode.title ?? '無題のエピソード',
+                        analysisResult.emotionalTitle.isNotEmpty
+                            ? analysisResult.emotionalTitle
+                            : '思い出の瞬間',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 2,
+                      )
+                    else if (mediaUpload.emotionalTitle != null &&
+                        mediaUpload.emotionalTitle!.isNotEmpty)
+                      Text(
+                        mediaUpload.emotionalTitle!,
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -460,6 +488,15 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+                    // Content preview
+                    if (analysisResult != null &&
+                        analysisResult.episodes.isNotEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -469,7 +506,7 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
       ),
     );
   }
-  
+
   Future<String> _getDownloadUrl(MediaUpload mediaUpload) async {
     try {
       final storage = FirebaseStorage.instance;
@@ -480,13 +517,13 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
       rethrow;
     }
   }
-  
+
   String _getDateKey(DateTime date) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final targetDate = DateTime(date.year, date.month, date.day);
     final difference = today.difference(targetDate).inDays;
-    
+
     if (difference == 0) {
       return '今日';
     } else if (difference == 1) {
@@ -504,19 +541,20 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
       return '${date.year}年${date.month}月${date.day}日';
     }
   }
-  
+
   String _getWeekdayName(DateTime date) {
     const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
     return '${weekdays[date.weekday % 7]}曜';
   }
-  
+
   Future<void> _uploadPhotos(
     BuildContext context,
     StorageProvider storageProvider,
     ChildrenProvider childrenProvider,
   ) async {
     // Show child selection dialog if needed
-    if (childrenProvider.hasChildren && storageProvider.selectedChildId == null) {
+    if (childrenProvider.hasChildren &&
+        storageProvider.selectedChildId == null) {
       final selectedChildId = await _showChildSelectionDialog(
         context,
         childrenProvider,
@@ -527,7 +565,7 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
         );
       }
     }
-    
+
     // Show upload progress dialog
     unawaited(
       showDialog<void>(
@@ -567,7 +605,7 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
         },
       ),
     );
-    
+
     try {
       await storageProvider.uploadPhotos();
       if (mounted) {
@@ -587,7 +625,7 @@ class _UnifiedTimelineScreenState extends State<UnifiedTimelineScreen> {
       }
     }
   }
-  
+
   Future<String?> _showChildSelectionDialog(
     BuildContext context,
     ChildrenProvider childrenProvider,

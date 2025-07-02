@@ -1,5 +1,5 @@
-name: mobile
-description: "A new Flutter project."
+name: kids_diary
+description: 'A new Flutter project.'
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -36,15 +36,20 @@ dependencies:
   cloud_firestore:
   crypto: ^3.0.6
   cupertino_icons: ^1.0.8
+  exif:
   firebase_auth:
   firebase_core:
   firebase_storage:
+  flutter_launcher_icons: ^0.14.4
   google_sign_in:
+  http:
   image_picker:
   mime:
   path:
+  path_provider:
   provider:
-  exif:
+  share_plus:
+  video_thumbnail:
 
 dev_dependencies:
   flutter_test:
@@ -62,8 +67,13 @@ dev_dependencies:
 # following page: https://dart.dev/tools/pub/pubspec
 
 # The following section is specific to Flutter packages.
-flutter:
+flutter_launcher_icons:
+  android: 'launcher_icon'
+  ios: true
+  image_path: 'assets/icon.png'
+  min_sdk_android: 21 # android min sdk min:16, default 21
 
+flutter:
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

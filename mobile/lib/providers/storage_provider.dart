@@ -7,9 +7,9 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:kids_diary/models/media_upload.dart';
+import 'package:kids_diary/services/media_upload_service.dart';
 import 'package:mime/mime.dart';
-import 'package:mobile/models/media_upload.dart';
-import 'package:mobile/services/media_upload_service.dart';
 
 class PhotoItem {
   final String id;

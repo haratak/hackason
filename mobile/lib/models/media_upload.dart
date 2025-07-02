@@ -19,7 +19,16 @@ class MediaUpload {
   // Optional fields
   final String? processingError;
   final DateTime? processedAt;
-  final String? episodeId;
+  final String? episodeId;  // 後方互換性のため保持（非推奨）
+  final String? mediaId;  // 新しいanalysis_resultsのID
+  final String? emotionalTitle;  // タイムライン表示用のタイトル
+  final int? episodeCount;  // 生成されたエピソード数
+  final Map<String, dynamic>? customMetadata;
+  final String visibility;
+  final List<String> sharedWith;
+  final bool isDeleted;
+  final bool isArchived;
+  final bool isFavorite;
   final DateTime? updatedAt;
   final DateTime? capturedAt; // 撮影日時
 
@@ -37,6 +46,15 @@ class MediaUpload {
     this.processingError,
     this.processedAt,
     this.episodeId,
+    this.mediaId,
+    this.emotionalTitle,
+    this.episodeCount,
+    this.customMetadata,
+    this.visibility = 'private',
+    this.sharedWith = const [],
+    this.isDeleted = false,
+    this.isArchived = false,
+    this.isFavorite = false,
     this.updatedAt,
     this.capturedAt,
   });
@@ -60,6 +78,15 @@ class MediaUpload {
           ? (json['processed_at'] as Timestamp).toDate()
           : null,
       episodeId: json['episode_id'] as String?,
+      mediaId: json['media_id'] as String?,
+      emotionalTitle: json['emotional_title'] as String?,
+      episodeCount: json['episode_count'] as int?,
+      customMetadata: json['custom_metadata'] as Map<String, dynamic>?,
+      visibility: json['visibility'] as String? ?? 'private',
+      sharedWith: (json['shared_with'] as List<dynamic>?)?.cast<String>() ?? [],
+      isDeleted: json['is_deleted'] as bool? ?? false,
+      isArchived: json['is_archived'] as bool? ?? false,
+      isFavorite: json['is_favorite'] as bool? ?? false,
       updatedAt: json['updated_at'] != null
           ? (json['updated_at'] as Timestamp).toDate()
           : null,
@@ -83,6 +110,15 @@ class MediaUpload {
       if (processingError != null) 'processing_error': processingError,
       if (processedAt != null) 'processed_at': Timestamp.fromDate(processedAt!),
       if (episodeId != null) 'episode_id': episodeId,
+      if (mediaId != null) 'media_id': mediaId,
+      if (emotionalTitle != null) 'emotional_title': emotionalTitle,
+      if (episodeCount != null) 'episode_count': episodeCount,
+      if (customMetadata != null) 'custom_metadata': customMetadata,
+      'visibility': visibility,
+      'shared_with': sharedWith,
+      'is_deleted': isDeleted,
+      'is_archived': isArchived,
+      'is_favorite': isFavorite,
       if (updatedAt != null) 'updated_at': Timestamp.fromDate(updatedAt!),
       if (capturedAt != null) 'captured_at': Timestamp.fromDate(capturedAt!),
     };
@@ -128,6 +164,15 @@ class MediaUpload {
     String? processingError,
     DateTime? processedAt,
     String? episodeId,
+    String? mediaId,
+    String? emotionalTitle,
+    int? episodeCount,
+    Map<String, dynamic>? customMetadata,
+    String? visibility,
+    List<String>? sharedWith,
+    bool? isDeleted,
+    bool? isArchived,
+    bool? isFavorite,
     DateTime? updatedAt,
     DateTime? capturedAt,
   }) {
@@ -145,6 +190,15 @@ class MediaUpload {
       processingError: processingError ?? this.processingError,
       processedAt: processedAt ?? this.processedAt,
       episodeId: episodeId ?? this.episodeId,
+      mediaId: mediaId ?? this.mediaId,
+      emotionalTitle: emotionalTitle ?? this.emotionalTitle,
+      episodeCount: episodeCount ?? this.episodeCount,
+      customMetadata: customMetadata ?? this.customMetadata,
+      visibility: visibility ?? this.visibility,
+      sharedWith: sharedWith ?? this.sharedWith,
+      isDeleted: isDeleted ?? this.isDeleted,
+      isArchived: isArchived ?? this.isArchived,
+      isFavorite: isFavorite ?? this.isFavorite,
       updatedAt: updatedAt ?? this.updatedAt,
       capturedAt: capturedAt ?? this.capturedAt,
     );

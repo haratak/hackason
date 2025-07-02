@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:mobile/providers/auth_provider.dart';
+import 'package:kids_diary/providers/auth_provider.dart';
 import 'package:provider/provider.dart';
 
 class LoginScreen extends StatelessWidget {

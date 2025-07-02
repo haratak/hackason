@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:mobile/models/family.dart';
-import 'package:mobile/services/family_service.dart';
+import 'package:kids_diary/models/family.dart';
+import 'package:kids_diary/services/family_service.dart';
 
 class FamilyProvider extends ChangeNotifier {
   final FamilyService _familyService = FamilyService();

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:mobile/models/child.dart';
-import 'package:mobile/providers/children_provider.dart';
-import 'package:mobile/providers/family_provider.dart';
-import 'package:mobile/screens/home_screen.dart';
-import 'package:mobile/screens/login_screen.dart';
+import 'package:kids_diary/models/child.dart';
+import 'package:kids_diary/providers/children_provider.dart';
+import 'package:kids_diary/providers/family_provider.dart';
+import 'package:kids_diary/screens/home_screen.dart';
+import 'package:kids_diary/screens/login_screen.dart';
 import 'package:provider/provider.dart';
 
 class SetupScreen extends StatefulWidget {

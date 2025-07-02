@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:mobile/models/file_upload.dart';
-import 'package:mobile/services/children_service.dart';
+import 'package:kids_diary/models/file_upload.dart';
+import 'package:kids_diary/services/children_service.dart';
 
 class FileUploadService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;

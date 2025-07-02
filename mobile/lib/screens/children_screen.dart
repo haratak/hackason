@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:mobile/models/child.dart';
-import 'package:mobile/providers/children_provider.dart';
-import 'package:mobile/providers/family_provider.dart';
+import 'package:kids_diary/models/child.dart';
+import 'package:kids_diary/providers/children_provider.dart';
+import 'package:kids_diary/providers/family_provider.dart';
 import 'package:provider/provider.dart';
 
 class ChildrenScreen extends StatefulWidget {

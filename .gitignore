@@ -46,3 +46,14 @@ htmlcov/
 # Temporary
 *.tmp
 *.log
+
+# Firebase service account keys
+**/firebase-adminsdk-*.json
+*firebase-adminsdk*.json
+
+# Google OAuth credentials
+**/client_secret*.json
+
+# Firebase config files (if they contain sensitive data)
+google-services.json
+GoogleService-Info.plist

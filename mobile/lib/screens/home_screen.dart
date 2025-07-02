@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:mobile/screens/newsletter_list_screen.dart';
-import 'package:mobile/screens/settings_screen.dart';
-import 'package:mobile/screens/unified_timeline_screen.dart';
+import 'package:kids_diary/screens/settings_screen.dart';
+import 'package:kids_diary/screens/unified_timeline_screen.dart';
+import 'package:kids_diary/screens/weekly_notebook_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,7 +19,7 @@ class _HomeScreenState extends State<HomeScreen> {
   
   final List<Widget> _screens = const [
     UnifiedTimelineScreen(),
-    NewsletterListScreen(),
+    WeeklyNotebookScreen(),
     SettingsScreen(),
   ];
 
@@ -47,8 +47,8 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'タイムライン',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.article),
-            label: '連絡帳',
+            icon: Icon(Icons.menu_book),
+            label: '週刊ノート',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings),
