@@ -173,6 +173,9 @@ def analyze_period_and_themes(
     start_date: str,
     end_date: str,
     child_info: Optional[Dict[str, Any]] = None,
+    custom_tone: Optional[str] = None,
+    custom_focus: Optional[str] = None,
+    selected_media_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     期間とテーマを分析し、検索用のクエリを生成する
@@ -182,14 +185,16 @@ def analyze_period_and_themes(
         start_date: 開始日（YYYY-MM-DD形式）
         end_date: 終了日（YYYY-MM-DD形式）
         child_info: 子供の基本情報
+        custom_tone: カスタムトーン（文章のスタイル）
+        custom_focus: カスタムフォーカス（注目してほしいこと）
+        selected_media_ids: 選択されたメディアID
 
     Returns:
         分析結果とテーマ別検索クエリ
     """
     try:
         logger.info(
-            f"Analyzing period for child {
-                child_id}: {start_date} to {end_date}"
+            f"Analyzing period for child {child_id}: {start_date} to {end_date}"
         )
 
         # 日付をパース
@@ -276,6 +281,9 @@ def analyze_period_and_themes(
                 },
                 "themes": themes,
                 "child_info": child_info or {},
+                "custom_tone": custom_tone,
+                "custom_focus": custom_focus,
+                "selected_media_ids": selected_media_ids or [],
             },
         }
 
@@ -285,16 +293,22 @@ def analyze_period_and_themes(
 
 
 def collect_episodes_by_theme(
-    theme_info: Dict[str, Any], child_id: str, start_date: str, end_date: str
+    theme_info: Dict[str, Any], 
+    child_id: str, 
+    start_date: str, 
+    end_date: str,
+    selected_media_ids: Optional[List[str]] = None
 ) -> Dict[str, Any]:
     """
     テーマに基づいてエピソードを収集する
+    注意: エピソードはanalysis_resultsドキュメント内に含まれている
 
     Args:
         theme_info: テーマ情報（ID、タイトル、検索クエリ）
         child_id: 子供のID
         start_date: 開始日
         end_date: 終了日
+        selected_media_ids: 選択されたanalysis_resultsのID（指定時はこれらのみを対象）
 
     Returns:
         収集されたエピソード
@@ -316,79 +330,87 @@ def collect_episodes_by_theme(
             else datetime.strptime(end_date, "%Y-%m-%d")
         )
 
-        # エピソードコレクションから期間内のエピソードを取得
-        # 複合インデックスを避けるため、まず child_id でフィルタ
-        episodes_ref = db.collection("episodes")
-        all_episodes = episodes_ref.where("child_id", "==", child_id).stream()
+        # analysis_resultsコレクションからエピソードを取得
+        analysis_ref = db.collection("analysis_results")
+        
+        # selected_media_idsが指定されている場合は、それらのanalysis_resultsのみを取得
+        if selected_media_ids:
+            logger.info(f"Filtering analysis results by selected IDs: {selected_media_ids}")
+            # IDでフィルタリング
+            # Firestoreの制限によりinクエリは最大10件までなので、バッチ処理
+            all_analysis_results = []
+            for i in range(0, len(selected_media_ids), 10):
+                batch_ids = selected_media_ids[i:i+10]
+                logger.info(f"Querying analysis_results with IDs in: {batch_ids}")
+                # ドキュメントIDで直接取得
+                for doc_id in batch_ids:
+                    doc = analysis_ref.document(doc_id).get()
+                    if doc.exists:
+                        all_analysis_results.append(doc)
+            logger.info(f"Total analysis results found: {len(all_analysis_results)}")
+        else:
+            # 通常の期間ベースの取得
+            logger.info(f"Getting all analysis results for child_id: {child_id}")
+            all_analysis_results = analysis_ref.where("child_id", "==", child_id).stream()
 
-        # メモリ内で日付フィルタリングとテーママッチング
+        # analysis_resultsからエピソードを抽出してテーママッチング
         episodes = []
-        for doc in all_episodes:
-            episode_data = doc.to_dict()
-            episode_created_at = episode_data.get("created_at")
+        total_analysis_processed = 0
+        
+        for doc in all_analysis_results:
+            total_analysis_processed += 1
+            analysis_data = doc.to_dict()
+            analysis_id = doc.id
+            
+            # captured_atまたはcreated_atを使用して日付を確認
+            analysis_date = analysis_data.get("captured_at") or analysis_data.get("created_at")
+            
+            # デバッグ情報を出力
+            if total_analysis_processed <= 3:
+                logger.info(f"Processing analysis_result {analysis_id}: media_uri={analysis_data.get('media_uri')}, episode_count={analysis_data.get('episode_count', 0)}")
 
-            # created_at が datetime オブジェクトまたは文字列の場合の処理
-            if episode_created_at:
-                if isinstance(episode_created_at, str):
-                    episode_created_at = datetime.fromisoformat(
-                        episode_created_at)
-
-                # 期間内のエピソードのみ処理
-                if start <= episode_created_at <= end:
-                    # 検索クエリとのマッチングをチェック（簡易版）
-                    content = episode_data.get("content", "").lower()
-                    tags = [tag.lower() for tag in episode_data.get("vector_tags", [])]
-
-                    # いずれかの検索クエリがコンテンツまたはタグに含まれているか
-                    matches = False
-                    for search_query in theme_info.get("search_queries", []):
-                        query_lower = search_query.lower()
-                        if query_lower in content or any(query_lower in tag for tag in tags):
-                            matches = True
-                            break
-
-                    if matches:
-                        episodes.append(
-                            {
-                                "id": doc.id,
-                                "content": episode_data.get("content", ""),
-                                "tags": episode_data.get("vector_tags", []),
-                                "media_source_uri": episode_data.get("media_source_uri", ""),
-                                "created_at": episode_data.get("created_at"),
-                                "emotion": episode_data.get("emotion", "")
-                            }
-                        )
-
-        # ベクトル検索を使用してより関連性の高いエピソードを取得
-        if INDEX_ID and INDEX_ENDPOINT_ID:
-            try:
-                # テーマに基づいてクエリを構築
-                search_query = f"{theme_info['title']} {' '.join(theme_info.get('search_queries', []))}"
+            # analysis_dateが存在し、期間内かチェック（selected_media_idsがある場合はスキップ）
+            if analysis_date:
+                if isinstance(analysis_date, str):
+                    analysis_date = datetime.fromisoformat(analysis_date)
                 
-                # 埋め込みを生成
-                embedding_model = get_embedding_model()
-                embeddings = embedding_model.get_embeddings([search_query])
-                query_embedding = embeddings[0].values
-                
-                # ベクトル検索を実行
-                vector_episodes = search_similar_episodes(
-                    query_embedding=query_embedding,
-                    child_id=child_id,
-                    start_date=start,
-                    end_date=end,
-                    top_k=10  # 上位10件を取得
-                )
-                
-                # ベクトル検索結果をマージ（重複を除去）
-                existing_ids = {ep['id'] for ep in episodes}
-                for vec_episode in vector_episodes:
-                    if vec_episode['id'] not in existing_ids:
-                        episodes.append(vec_episode)
-                
-                logger.info(f"Vector search found {len(vector_episodes)} episodes for theme {theme_info['title']}")
-            except Exception as e:
-                logger.warning(f"Vector search failed, using text search only: {str(e)}")
+                # selected_media_idsが指定されている場合は期間チェックをスキップ
+                if selected_media_ids or (start <= analysis_date <= end):
+                    # analysis_results内のepisodes配列を処理
+                    analysis_episodes = analysis_data.get("episodes", [])
+                    
+                    for episode in analysis_episodes:
+                        # 検索クエリとのマッチングをチェック
+                        content = episode.get("content", "").lower()
+                        tags = [tag.lower() for tag in episode.get("tags", [])]
+                        
+                        # いずれかの検索クエリがコンテンツまたはタグに含まれているか
+                        matches = False
+                        for search_query in theme_info.get("search_queries", []):
+                            query_lower = search_query.lower()
+                            if query_lower in content or any(query_lower in tag for tag in tags):
+                                matches = True
+                                break
+                        
+                        if matches:
+                            # エピソードに追加情報を付与
+                            episode_with_meta = episode.copy()
+                            episode_with_meta['analysis_id'] = analysis_id
+                            episode_with_meta['media_uri'] = analysis_data.get('media_uri')
+                            episode_with_meta['child_id'] = analysis_data.get('child_id')
+                            episode_with_meta['created_at'] = analysis_date
+                            episode_with_meta['image_urls'] = [analysis_data.get('media_uri')] if analysis_data.get('media_uri') else []
+                            
+                            episodes.append(episode_with_meta)
+                            logger.info(f"Episode from analysis {analysis_id} matches theme '{theme_info['title']}'")
+        
+        logger.info(f"Processed {total_analysis_processed} analysis results, found {len(episodes)} episodes matching theme")
 
+        if len(episodes) == 0:
+            logger.warning(f"No episodes found for theme '{theme_info['title']}' with child_id={child_id}")
+            if selected_media_ids:
+                logger.warning(f"Selected media IDs were: {selected_media_ids}")
+        
         return {
             "status": "success",
             "report": {
@@ -404,7 +426,11 @@ def collect_episodes_by_theme(
 
 
 def generate_topic_content(
-    theme_episodes: Dict[str, Any], child_info: Dict[str, Any], topic_layout: str
+    theme_episodes: Dict[str, Any], 
+    child_info: Dict[str, Any], 
+    topic_layout: str,
+    custom_tone: Optional[str] = None,
+    custom_focus: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     テーマとエピソードからトピックコンテンツを生成する
@@ -413,6 +439,8 @@ def generate_topic_content(
         theme_episodes: テーマとエピソードの情報
         child_info: 子供の基本情報
         topic_layout: レイアウトタイプ（large_photo, text_only, etc.）
+        custom_tone: カスタムトーン（文章のスタイル）
+        custom_focus: カスタムフォーカス（注目してほしいこと）
 
     Returns:
         生成されたトピックコンテンツ
@@ -427,8 +455,7 @@ def generate_topic_content(
             episodes = theme_episodes.get("episodes", [])
 
         logger.info(
-            f"Generating content for theme: {
-                theme['title']} with {len(episodes)} episodes"
+            f"Generating content for theme: {theme['title']} with {len(episodes)} episodes"
         )
 
         if not episodes:
@@ -458,22 +485,33 @@ def generate_topic_content(
             ]
         )
 
+        # カスタムトーンとフォーカスの追加部分を構成
+        custom_instructions = ""
+        if custom_tone and custom_tone.strip():
+            custom_instructions += f"\n\n【リクエストされた文章スタイル】\n{custom_tone}"
+        if custom_focus and custom_focus.strip():
+            custom_instructions += f"\n\n【特に注目してほしいこと】\n{custom_focus}"
+
         prompt = f"""
-        以下のエピソードを基に、{child_name}の「{theme['title']}」についての
-        温かく親しみやすい文章を生成してください。
+あなたは、子供との思い出を、まるでその場にいたかのように鮮やかに記録するジャーナリストです。
+以下のエピソード群を読んで、**解釈や成長の断定はせず、あったことを具体的に、生き生きと描写する**記事を作成してください。
 
-        {theme['prompt_hint']}
+【テーマ】
+「{theme['title']}」
 
-        エピソード:
-        {episodes_text}
+【記録されたエピソード】
+{episodes_text}{custom_instructions}
 
-        要件:
-        - 200-300文字程度
-        - 保護者が読んで嬉しくなるような温かい文章
-        - 具体的なエピソードを含める
-        - 子供の成長や個性が感じられる内容
-        - 「です・ます」調で統一
-        """
+【執筆のルール】
+- **事実を最優先:** エピソードにある具体的な行動、場所、会話（例：「『走れ走れ』と言った」「イチゴ型の容器で飲んだ」「お祭りに行った」）をそのまま使ってください。
+- **成長の決めつけはNG:** 「〇〇ができるようになった」と勝手に結論づけないでください。その子にとっては当たり前のことかもしれません。代わりに「上手に〇〇していましたね」「〇〇している姿が印象的でした」のように、その場の様子を描写するに留めてください。
+- **抽象的な言葉を避ける:** 「自立心の芽生え」「五感をフル活用」のような曖昧な表現は使わず、「自分で容器を持って飲んでいた」「お祭りの賑やかな音や食べ物の匂いに囲まれていた」のように具体的に書いてください。
+- **情景描写を豊かに:** もしエピソードに場所（お祭り、公園など）の情報があれば、その場の雰囲気が伝わるように書いてください。「お祭りの活気の中で、{child_name}は特に楽しそうでした」のように。
+- **親しみやすい「です・ます」調**で記述してください。
+
+【出力形式】
+200文字程度の記事
+"""
 
         # コンテンツを生成
         response = model.generate_content(prompt)
@@ -498,8 +536,7 @@ def generate_topic_content(
                     # 画像のキャプションを生成
                     caption_prompt = f"{child_name}の{theme['title']}の様子"
                     caption_response = model.generate_content(
-                        f"以下の文章から、写真のキャプションを15文字以内で生成してください：\n{
-                            episode['content'][:100]}"
+                        f"以下の文章から、写真のキャプションを15文字以内で生成してください：\n{episode['content'][:100]}"
                     )
                     caption = caption_response.text.strip()
                     break
