@@ -38,10 +38,8 @@ Gemini 2.5 Flashが写真・動画を分析し、子どもの年齢に応じた�
 毎週、その週のハイライトが**新聞風のレイアウト**で自動生成。URLを送るだけで、祖父母も簡単に閲覧できます。
 
 ### 実際のデモ動画をご覧ください
-## Ⅳ. プロジェクトのデモ動画
-<video width="800" controls>
-  <source src="https://youtu.be/TafdbSHw6rs" type="video/mp4">
-</video>
+
+https://youtu.be/TafdbSHw6rs
 
 
 ## Ⅰ. 解決したい課題と技術的アプローチ
