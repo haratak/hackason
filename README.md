@@ -1,211 +1,185 @@
-# Kids Diary (おまかせダイアリー) - 子供の成長記録自動化プラットフォーム
+# おまかせダイアリー - Kids Diary Platform
 
 ## 概要
 
-Kids Diary（おまかせダイアリー）は、AI技術を活用して子供の日々の成長記録を自動化するプラットフォームです。写真や動画をアップロードするだけで、AIが自動的に分析・整理し、週次の成長記録ノートブックを生成します。親は大切な瞬間を見逃すことなく、手間をかけずに子供の成長を記録できます。
+おまかせダイアリーは、子どもの成長記録を自動的に整理し、新聞風のレイアウトで週次ノートブックとして提供するプラットフォームです。親が撮影した写真や動画をアップロードするだけで、AIが内容を分析し、子どもの成長や思い出を自動的に記録・整理します。
 
 ## 主な特徴
 
-- 📸 **自動メディア分析**: AIが写真・動画から子供の行動や表情を自動分析
-- 📖 **週次ノートブック生成**: 1週間の思い出を5つのテーマで自動整理
-- 📰 **新聞風レイアウト**: 生成されたノートブックを美しい新聞風デザインで表示
-- 👨‍👩‍👧‍👦 **家族共有**: URLベースで簡単に家族と共有
-- 🔍 **高度な検索**: ベクトル検索による類似シーン・成長の軌跡を発見
+- 📱 **簡単な写真・動画アップロード**: モバイルアプリから簡単に思い出を記録
+- 🤖 **AI による自動分析**: アップロードされたメディアから成長記録を自動抽出
+- 📰 **週次ノートブックの自動生成**: 毎週月曜日に新聞風レイアウトで思い出をまとめ
+- 👨‍👩‍👧‍👦 **家族での共有**: URLを共有するだけで、離れた家族も成長記録を閲覧可能
+- 🔍 **賢い検索機能**: ベクトル検索により、関連する思い出を自動的に関連付け
 
-## 全体アーキテクチャ
+## システム全体アーキテクチャ
 
 ```mermaid
 graph TB
-    %% ユーザーインターフェース層
     subgraph "ユーザーインターフェース"
-        MobileApp[Mobile App<br/>Flutter]
-        WebApp[Photo Web App<br/>Flask/Python]
-        DairyWeb[Dairy Publisher<br/>Firebase Hosting]
+        USER[👤 ユーザー<br/>（親・家族）]
+        MOBILE[📱 モバイルアプリ<br/>（Flutter）<br/>- 写真/動画アップロード<br/>- タイムライン閲覧<br/>- ノートブック共有]
+        WEB[🌐 Dairy Publisher<br/>（Web SPA）<br/>- 新聞風レイアウト<br/>- 5つのトピック表示<br/>- 共有URL対応]
     end
     
-    %% バックエンドサービス層
-    subgraph "バックエンドサービス"
-        MediaAgent[Media Processing Agent<br/>メディア分析AI]
-        ContentGen[Content Generator<br/>ノートブック生成AI]
+    subgraph "AI処理層"
+        MEDIA[🎬 Media Processing Agent<br/>- 画像/動画分析<br/>- エピソード抽出<br/>- 感情分析・タグ付け]
+        CONTENT[📝 Content Generator<br/>- 週次ノートブック生成<br/>- 5つのテーマ整理<br/>- 温かい文章生成]
     end
     
-    %% データストア層
-    subgraph "データストア"
-        Firestore[(Firestore<br/>- families<br/>- children<br/>- episodes<br/>- notebooks)]
-        Storage[(Cloud Storage<br/>写真・動画)]
-        VectorDB[(Vector Search<br/>類似検索インデックス)]
+    subgraph "データ基盤（Google Cloud Platform）"
+        AUTH[🔐 Firebase Auth<br/>認証管理]
+        FIRESTORE[(🗄️ Firestore<br/>- 家族データ<br/>- 子どもプロフィール<br/>- エピソード<br/>- ノートブック)]
+        STORAGE[☁️ Cloud Storage<br/>写真・動画保存]
+        VECTOR[🔍 Vertex AI<br/>Vector Search<br/>意味検索インデックス]
+        FUNCTIONS[⚡ Cloud Functions<br/>イベントトリガー]
     end
     
-    %% 外部サービス
-    subgraph "AIサービス"
-        Gemini[Gemini 2.5 Flash<br/>画像・動画分析]
-        Embedding[Text Embedding<br/>ベクトル生成]
+    subgraph "将来の拡張"
+        PHOTOS[📸 Photo Web App<br/>（開発中）<br/>- Google Photos連携<br/>- 自動写真選別]
     end
     
-    %% データフロー
-    MobileApp -->|写真・動画アップロード| Storage
-    WebApp -->|写真アップロード| Storage
+    %% ユーザーフロー
+    USER -->|アプリ利用| MOBILE
+    USER -->|URL共有| WEB
     
-    Storage -->|トリガー| MediaAgent
-    MediaAgent -->|分析| Gemini
-    MediaAgent -->|エピソード保存| Firestore
-    MediaAgent -->|ベクトル化| VectorDB
+    %% モバイルアプリの接続
+    MOBILE -->|認証| AUTH
+    MOBILE -->|データ保存| FIRESTORE
+    MOBILE -->|メディアアップロード| STORAGE
+    MOBILE -->|ノートブック閲覧| FIRESTORE
     
-    Firestore -->|週次トリガー| ContentGen
-    ContentGen -->|エピソード収集| Firestore
-    ContentGen -->|類似検索| VectorDB
-    ContentGen -->|テキスト生成| Gemini
-    ContentGen -->|ノートブック保存| Firestore
+    %% AI処理フロー
+    STORAGE -->|トリガー| FUNCTIONS
+    FUNCTIONS -->|起動| MEDIA
+    MEDIA -->|メディア分析| STORAGE
+    MEDIA -->|エピソード保存| FIRESTORE
+    MEDIA -->|ベクトル生成| VECTOR
     
-    MobileApp -->|閲覧| Firestore
-    DairyWeb -->|表示| Firestore
+    %% コンテンツ生成フロー
+    FUNCTIONS -->|週次実行| CONTENT
+    CONTENT -->|エピソード取得| FIRESTORE
+    CONTENT -->|類似検索| VECTOR
+    CONTENT -->|ノートブック保存| FIRESTORE
     
-    %% スタイリング
-    classDef ui fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    classDef service fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    classDef storage fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    classDef ai fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+    %% Web表示
+    WEB -->|データ取得| FIRESTORE
+    WEB -->|画像取得| STORAGE
     
-    class MobileApp,WebApp,DairyWeb ui
-    class MediaAgent,ContentGen service
-    class Firestore,Storage,VectorDB storage
-    class Gemini,Embedding ai
+    %% 将来の拡張
+    PHOTOS -.->|将来統合| MEDIA
+    
+    style USER fill:#ffd,stroke:#333,stroke-width:2px
+    style MOBILE fill:#bbf,stroke:#333,stroke-width:2px
+    style WEB fill:#fbf,stroke:#333,stroke-width:2px
+    style MEDIA fill:#bfb,stroke:#333,stroke-width:2px
+    style CONTENT fill:#fbb,stroke:#333,stroke-width:2px
+    style FIRESTORE fill:#ffa,stroke:#333,stroke-width:2px
+    style PHOTOS fill:#ddd,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
 ```
 
-## コンポーネント構成
+## コンポーネント概要
 
-### 1. Mobile App (Flutter)
-**役割**: メインのユーザーインターフェース  
-**主要機能**:
-- 家族・子供の管理
-- 写真・動画のアップロード
-- タイムライン表示
-- ノートブック閲覧
-- Google Sign-In認証
+### 1. モバイルアプリ（Mobile App）
+- **役割**: メインのユーザーインターフェース
+- **技術**: Flutter（クロスプラットフォーム対応）
+- **機能**: 
+  - 家族・子どもプロフィール管理
+  - 写真・動画の撮影とアップロード
+  - AIが分析したエピソードのタイムライン表示
+  - 週次ノートブックの閲覧と共有
 
-**技術スタック**: Flutter, Provider, Firebase SDK
+### 2. メディア処理エージェント（Media Processing Agent）
+- **役割**: アップロードされたメディアをAIで分析
+- **技術**: Python + Google ADK + Gemini AI
+- **機能**:
+  - 年齢に応じた成長観点での分析
+  - 感情的な日本語タイトルの生成
+  - 検索用タグとベクトル埋め込みの作成
 
-### 2. Media Processing Agent
-**役割**: アップロードされたメディアをAIで分析  
-**主要機能**:
-- 写真・動画から子供の行動や表情を分析
-- 年齢に応じた多角的な視点での分析
-- エピソードの構造化とタグ付け
-- ベクトル検索用のインデックス作成
+### 3. コンテンツジェネレーター（Content Generator）
+- **役割**: 週次ノートブックの自動生成
+- **技術**: Python + Google ADK + Gemini AI
+- **機能**:
+  - 1週間のエピソードを5つのテーマに整理
+  - 親向けの温かい文章生成（200-300文字）
+  - 関連エピソードの自動関連付け
 
-**技術スタック**: Python 3.12, Google ADK, Gemini 2.5 Flash
+### 4. ダイアリーパブリッシャー（Dairy Publisher）
+- **役割**: 成長記録の新聞風ビューアー（閲覧専用インターフェース）
+- **技術**: Vanilla JavaScript (ES6+) + CSS3 + Firebase Hosting
+- **機能**:
+  - 新聞風レイアウトで5つのトピックを美しく表示
+  - URLパラメータベースのルーティング（/children/:childId/notebooks/:notebookId）
+  - レスポンシブデザイン（モバイル対応）
+  - Firebase SDKによるリアルタイムデータ取得
+  - エラーハンドリングとローディングアニメーション
 
-### 3. Content Generator
-**役割**: 週次ノートブックの自動生成  
-**主要機能**:
-- 1週間分のエピソードを5つのテーマで整理
-- AIによる温かい文章の生成
-- ベクトル検索による関連エピソードの収集
-- 画像の自動選択とキャプション生成
+### 5. フォトWebアプリ（Photo Web App）※開発中
+- **役割**: Google Photosからの自動写真収集
+- **技術**: Python + Flask + Google Photos API
+- **機能**:
+  - 顔認識による特定の子どもの写真抽出
+  - 将来的にメディア処理エージェントと統合予定
 
-**技術スタック**: Python 3.12, Google ADK, Vertex AI
+## データフロー
 
-### 4. Dairy Publisher
-**役割**: ノートブックを新聞風レイアウトで表示  
-**主要機能**:
-- 共有可能なWebページとして公開
-- レスポンシブな新聞風デザイン
-- URLベースの簡単共有
-
-**技術スタック**: HTML/CSS/JavaScript, Firebase Hosting
-
-### 5. Photo Web App
-**役割**: Google Photosからの写真自動選別（開発中）  
-**主要機能**:
-- Google Photos連携
-- 顔認識による特定人物の写真選別
-- バッチアップロード
-
-**技術スタック**: Python, Flask, Vertex AI
-
-## データフローシナリオ
-
-### 1. 日常の記録フロー
-1. 親がモバイルアプリから写真・動画をアップロード
-2. Media Processing Agentが自動的に内容を分析
-3. 子供の行動、表情、場面を理解してエピソードを生成
-4. エピソードがFirestoreに保存され、検索用インデックスを作成
-
-### 2. 週次ノートブック生成フロー
-1. 毎週月曜日にContent Generatorが自動起動
-2. 前週のエピソードを収集・分析
-3. 5つのテーマ（今週の興味、行った場所、初めての体験、ベストショット、できるようになったこと）で整理
-4. AIが温かい文章でまとめてノートブックを生成
-
-### 3. 共有フロー
-1. 生成されたノートブックがDairy Publisherで公開
-2. URLを家族に共有
-3. 受け取った家族が新聞風レイアウトで閲覧
+1. **メディアアップロード**: 親がモバイルアプリで写真・動画をアップロード
+2. **AI分析**: Media Processing Agentが内容を分析し、成長記録を抽出
+3. **データ保存**: エピソードとしてFirestoreに保存、検索用ベクトルも生成
+4. **週次生成**: 毎週月曜日にContent Generatorが1週間分をまとめてノートブック作成
+5. **閲覧・共有**: モバイルアプリやWebで閲覧、URLで家族と共有
 
 ## 技術スタック
 
-### 言語・フレームワーク
-- **Frontend**: Flutter (Dart), HTML/CSS/JavaScript
-- **Backend**: Python 3.12
-- **AI Framework**: Google ADK (Agent Development Kit)
-
-### Google Cloud Platform
-- **Firestore**: NoSQLデータベース
-- **Cloud Storage**: メディアファイル保存
-- **Cloud Functions**: サーバーレス処理
-- **Vertex AI**: AI/ML サービス
-- **Firebase Hosting**: 静的サイトホスティング
-- **Firebase Authentication**: 認証サービス
-
-### AI/ML
-- **Gemini 2.0/2.5 Flash**: マルチモーダル分析・テキスト生成
-- **Text Embedding Model**: ベクトル化
-- **Vector Search**: 類似検索
+- **フロントエンド**: Flutter（モバイル）、HTML/CSS/JS（Web）
+- **バックエンド**: Python 3.12、Google ADK
+- **AI/ML**: Gemini 2.5 Flash、Vertex AI、text-embedding-004
+- **インフラ**: Google Cloud Platform
+  - Firebase（Auth, Firestore, Storage, Hosting）
+  - Cloud Functions
+  - Vertex AI Vector Search
+- **開発ツール**: Git、Firebase CLI、gcloud CLI
 
 ## セキュリティとプライバシー
 
-- Google Sign-Inによる安全な認証
-- 家族単位でのデータ隔離
-- 環境変数による機密情報の管理
-- Firestoreセキュリティルールによるアクセス制御
+- Google認証によるセキュアなログイン
+- 家族単位でのデータ分離
+- URLベースの共有（認証不要だが、URLを知っている人のみアクセス可能）
+- 子どもの写真は家族メンバーのみがアクセス可能
 
-## セットアップ
+## 今後の展望
 
-### 前提条件
-- Google Cloud Projectの作成
-- Firebase プロジェクトの設定
-- 必要なAPIの有効化
-  - Vertex AI API
-  - Firebase API
-  - Cloud Storage API
+- Google Photos連携による自動写真収集
+- Firebase FunctionsによるPDFエクスポート機能
+- Vertex AIを使用した自動要約生成
+- 認証機能の追加（プライベート共有）
+- PWA対応（オフライン閲覧）
+- より高度なAI分析（発達段階の詳細な追跡など）
+- 多言語対応
+- プッシュ通知機能
 
-### 環境変数
-```bash
-GCP_PROJECT_ID=your-project-id
-GCP_LOCATION=us-central1
-VERTEX_AI_VECTOR_SEARCH_INDEX_ID=your-index-id
-VERTEX_AI_VECTOR_SEARCH_INDEX_ENDPOINT_ID=your-endpoint-id
+## プロジェクト構成
+
+```
+hackason/
+├── mobile/                    # Flutterモバイルアプリ
+├── media_processing_agent/    # メディア分析AIエージェント
+├── content_generator/         # ノートブック生成AIエージェント
+├── dairy_publisher/          # Web表示用静的サイト
+├── photo_web_app/           # Google Photos連携アプリ（開発中）
+└── CLAUDE.md                # プロジェクト設定
 ```
 
-### デプロイ
-各コンポーネントのREADMEを参照してください。
+各コンポーネントの詳細なアーキテクチャについては、それぞれのディレクトリ内のarchitecture.mdファイルを参照してください。
 
-## 今後の拡張予定
+## 開発環境
 
-1. **PDF出力機能**: ノートブックのPDF化
-2. **動画ハイライト**: 動画からの自動ハイライト抽出
-3. **成長トレンド分析**: 長期的な成長傾向の可視化
-4. **音声メモ対応**: 音声の文字起こしと統合
-5. **多言語対応**: 英語など他言語への対応
+- Python 3.12
+- Flutter SDK
+- Google Cloud Platform アカウント
+- Firebase プロジェクト（hackason-464007）
 
 ## ライセンス
 
-このプロジェクトは内部使用のみを目的としています。
-
-## 貢献者
-
-- [貢献者リスト]
-
----
-
-Thank you for letting me work
+このプロジェクトは内部利用を目的としています。
