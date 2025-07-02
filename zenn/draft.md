@@ -33,7 +33,7 @@ Gemini 2.5 Flashが写真・動画を分析し、子どもの年齢に応じた�
 
 #### 3️⃣ 新聞風の成長記録が完成！家族と共有
 
-<img width="800" alt="完成した新聞風レイアウト" src="https://storage.googleapis.com/zenn-assets/Group%201.png">
+<img width="800" alt="完成した新聞風レイアウト" src="https://storage.cloud.google.com/zenn-assets/Group%201.png?authuser=0">
 
 毎週、その週のハイライトが**新聞風のレイアウト**で自動生成。URLを送るだけで、祖父母も簡単に閲覧できます。
 
