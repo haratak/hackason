@@ -12,14 +12,11 @@ class MediaUpload {
   final String bucketName;
   final String filePath;
   final MediaType mediaType;
-  final String contentType;
   final ProcessingStatus processingStatus;
   final DateTime createdAt;
   final DateTime uploadedAt;
-  
+
   // Optional fields
-  final int? fileSize;
-  final String? originalFilename;
   final String? processingError;
   final DateTime? processedAt;
   final String? episodeId;  // 後方互換性のため保持（非推奨）
@@ -33,7 +30,7 @@ class MediaUpload {
   final bool isArchived;
   final bool isFavorite;
   final DateTime? updatedAt;
-  final DateTime? capturedAt;  // 撮影日時
+  final DateTime? capturedAt; // 撮影日時
 
   MediaUpload({
     required this.id,
@@ -43,12 +40,9 @@ class MediaUpload {
     required this.bucketName,
     required this.filePath,
     required this.mediaType,
-    required this.contentType,
     required this.processingStatus,
     required this.createdAt,
     required this.uploadedAt,
-    this.fileSize,
-    this.originalFilename,
     this.processingError,
     this.processedAt,
     this.episodeId,
@@ -74,15 +68,14 @@ class MediaUpload {
       bucketName: json['bucket_name'] as String,
       filePath: json['file_path'] as String,
       mediaType: _parseMediaType(json['media_type'] as String),
-      contentType: json['content_type'] as String,
-      processingStatus: _parseProcessingStatus(json['processing_status'] as String),
+      processingStatus: _parseProcessingStatus(
+        json['processing_status'] as String,
+      ),
       createdAt: (json['created_at'] as Timestamp).toDate(),
       uploadedAt: (json['uploaded_at'] as Timestamp).toDate(),
-      fileSize: json['file_size'] as int?,
-      originalFilename: json['original_filename'] as String?,
       processingError: json['processing_error'] as String?,
-      processedAt: json['processed_at'] != null 
-          ? (json['processed_at'] as Timestamp).toDate() 
+      processedAt: json['processed_at'] != null
+          ? (json['processed_at'] as Timestamp).toDate()
           : null,
       episodeId: json['episode_id'] as String?,
       mediaId: json['media_id'] as String?,
@@ -94,11 +87,11 @@ class MediaUpload {
       isDeleted: json['is_deleted'] as bool? ?? false,
       isArchived: json['is_archived'] as bool? ?? false,
       isFavorite: json['is_favorite'] as bool? ?? false,
-      updatedAt: json['updated_at'] != null 
-          ? (json['updated_at'] as Timestamp).toDate() 
+      updatedAt: json['updated_at'] != null
+          ? (json['updated_at'] as Timestamp).toDate()
           : null,
-      capturedAt: json['captured_at'] != null 
-          ? (json['captured_at'] as Timestamp).toDate() 
+      capturedAt: json['captured_at'] != null
+          ? (json['captured_at'] as Timestamp).toDate()
           : null,
     );
   }
@@ -111,12 +104,9 @@ class MediaUpload {
       'bucket_name': bucketName,
       'file_path': filePath,
       'media_type': mediaType.toString().split('.').last,
-      'content_type': contentType,
       'processing_status': processingStatus.toString().split('.').last,
       'created_at': FieldValue.serverTimestamp(),
       'uploaded_at': Timestamp.fromDate(uploadedAt),
-      if (fileSize != null) 'file_size': fileSize,
-      if (originalFilename != null) 'original_filename': originalFilename,
       if (processingError != null) 'processing_error': processingError,
       if (processedAt != null) 'processed_at': Timestamp.fromDate(processedAt!),
       if (episodeId != null) 'episode_id': episodeId,
@@ -168,12 +158,9 @@ class MediaUpload {
     String? bucketName,
     String? filePath,
     MediaType? mediaType,
-    String? contentType,
     ProcessingStatus? processingStatus,
     DateTime? createdAt,
     DateTime? uploadedAt,
-    int? fileSize,
-    String? originalFilename,
     String? processingError,
     DateTime? processedAt,
     String? episodeId,
@@ -187,6 +174,7 @@ class MediaUpload {
     bool? isArchived,
     bool? isFavorite,
     DateTime? updatedAt,
+    DateTime? capturedAt,
   }) {
     return MediaUpload(
       id: id ?? this.id,
@@ -196,12 +184,9 @@ class MediaUpload {
       bucketName: bucketName ?? this.bucketName,
       filePath: filePath ?? this.filePath,
       mediaType: mediaType ?? this.mediaType,
-      contentType: contentType ?? this.contentType,
       processingStatus: processingStatus ?? this.processingStatus,
       createdAt: createdAt ?? this.createdAt,
       uploadedAt: uploadedAt ?? this.uploadedAt,
-      fileSize: fileSize ?? this.fileSize,
-      originalFilename: originalFilename ?? this.originalFilename,
       processingError: processingError ?? this.processingError,
       processedAt: processedAt ?? this.processedAt,
       episodeId: episodeId ?? this.episodeId,
@@ -215,6 +200,7 @@ class MediaUpload {
       isArchived: isArchived ?? this.isArchived,
       isFavorite: isFavorite ?? this.isFavorite,
       updatedAt: updatedAt ?? this.updatedAt,
+      capturedAt: capturedAt ?? this.capturedAt,
     );
   }
 }

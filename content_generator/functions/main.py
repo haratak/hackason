@@ -1,13 +1,11 @@
-# Welcome to Cloud Functions for Firebase for Python!
-# To get started, simply uncomment the below code or create your own.
-# Deploy with `firebase deploy`
+"""
+Firebase Cloud Functions エントリーポイント
+メディア処理とノートブック生成の両方の機能を提供
+"""
 
-from firebase_functions import https_fn
-from firebase_admin import initialize_app
+# メディア処理関数をインポート（もし存在する場合）
+# from sample_funcsion import process_media_upload_firestore, process_media_upload_http
 
-# initialize_app()
-#
-#
-# @https_fn.on_request()
-# def on_request_example(req: https_fn.Request) -> https_fn.Response:
-#     return https_fn.Response("Hello world!")
+# ノートブック生成関数をインポート
+from notebook_functions import generate_notebook_http, generate_weekly_notebooks
+from notebook_generation_task import process_notebook_generation
