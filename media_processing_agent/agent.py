@@ -918,17 +918,22 @@ def index_media_analysis(
         created_at_timestamp = int(created_at.timestamp())
 
         # Upsert to Vector Search Index
-        # Using restricts field for user-specific filtering and numeric fields for timestamp filtering
+        # Using restricts field for all filtering
+        restricts = [
+            {"namespace": "child_id", "allow_list": [child_id]}
+        ]
+        
+        # Add captured_at timestamp if available
+        restricts.append(
+            {"namespace": "captured_at", "value_int": created_at_timestamp}
+        )
+        
         vector_search_index.upsert_datapoints(
             datapoints=[
                 {
                     "datapoint_id": episode_id,
                     "feature_vector": vector,
-                    "restricts": [{"namespace": "child_id", "allow_list": [child_id]}],
-                    "numeric_restricts": [
-                        {"namespace": "captured_at",  # Changed from created_at to captured_at
-                            "value_int": created_at_timestamp}
-                    ],
+                    "restricts": restricts,
                 }
             ]
         )
