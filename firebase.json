@@ -1,0 +1,48 @@
+{
+  "functions": [
+    {
+      "source": "content_generator/functions",
+      "codebase": "content-generator",
+      "runtime": "python311",
+      "ignore": [
+        "venv",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "__pycache__",
+        ".pytest_cache",
+        ".env",
+        ".env.local"
+      ]
+    },
+    {
+      "source": "media_processing_agent/functions",
+      "codebase": "media-processor",
+      "runtime": "python311",
+      "ignore": [
+        "venv",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "__pycache__",
+        ".pytest_cache",
+        ".env",
+        ".env.local"
+      ]
+    }
+  ],
+  "hosting": {
+    "public": "dairy_publisher/public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/children/*/notebooks/*",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
