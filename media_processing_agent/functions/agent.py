@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timezone
