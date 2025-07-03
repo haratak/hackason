@@ -61,26 +61,41 @@ graph TB
 - URLパラメータから`childId`と`notebookId`を抽出
 - Firestoreから対応するノートブックデータを取得
 - 5つのトピックを新聞風レイアウトで表示
+- Firebase設定はindex.html内にハードコード（環境変数未使用）
 
 ### 2. レイアウト構成
 - **トピック1**: メインストーリー（大きな写真付き）
-- **トピック2**: テキストセクション
-- **トピック3**: サイドストーリー（小さな写真付き）
-- **トピック4**: 写真セクション（中サイズ）
-- **トピック5**: 達成事項・マイルストーン
+  - サブタイトル表示対応
+- **トピック2**: テキストセクション（テキストのみ）
+- **トピック3**: サイドストーリー（大きな写真付き）
+  - キャプション表示対応
+- **トピック4**: 写真セクション（大きな写真）
+  - キャプション表示対応
+- **トピック5**: 中央セクション（まとめ）
 
-### 3. UI/UX機能
-- ローディングアニメーション
-- エラーハンドリング（データ未検出時）
+### 3. メディア処理機能
+- **動画サポート**: .mov, .mp4, .avi, .wmv, .flv, .webm
+- **動画サムネイル**: サーバー側で生成されたサムネイルを表示
+- **gs://形式URL変換**: Firebase Storage URLをHTTPS形式に自動変換
+- **縦長画像対応**: アスペクト比に応じて高さを自動調整
+- **動画アイコン**: 動画サムネイルに再生アイコンをオーバーレイ表示
+
+### 4. UI/UX機能
+- ローディングアニメーション（スピナー付き）
+- エラーハンドリング（データ未検出時の親切なメッセージ）
 - レスポンシブデザイン（モバイル対応）
-- 日本語日付フォーマット
+- 日本語日付フォーマット（年月日表示）
+- WebView検出機能
+- ニックネーム通信（子どもの名前を含むタイトル）
 
 ## 技術スタック
 
 - **Frontend**: Vanilla JavaScript (ES6+)
 - **Styling**: CSS3 (Grid Layout, Flexbox)
 - **Database**: Cloud Firestore
+- **Storage**: Firebase Storage（画像・動画）
 - **Hosting**: Firebase Hosting
+- **Firebase SDK**: v10.7.1 (compat mode)
 - **Build**: 静的ファイル（ビルド不要）
 
 ## データフロー
@@ -110,8 +125,8 @@ sequenceDiagram
 - Firebase プロジェクトへのアクセス権
 - Node.js（Firebase CLIのため）
 
-### 環境変数
-`.env.example`を参考に、必要な環境変数を設定してください。
+### 設定
+Firebase設定は`public/index.html`内にハードコードされています。プロジェクト固有の設定に変更する必要がある場合は、該当箇所を直接編集してください。
 
 ### デプロイ
 ```bash
@@ -124,12 +139,21 @@ firebase deploy --only hosting
 dairy_publisher/
 ├── README.md           # このファイル
 ├── architecture.md     # 詳細設計ドキュメント
-├── firebase.json       # Firebase設定
+├── firebase.json.backup # Firebase設定（バックアップ）※注：firebase.jsonは現在存在しません
+├── .firebaserc.backup  # Firebaseプロジェクト設定（バックアップ）
 ├── .env.example       # 環境変数テンプレート
+├── .gitignore         # Git除外設定
+├── .python-version    # Pythonバージョン指定
+├── .claude/           # Claude Code設定
+│   └── settings.local.json
+├── .firebase/         # Firebaseキャッシュ
+│   └── hosting.cHVibGlj.cache
 └── public/            # 公開ディレクトリ
     ├── index.html     # SPAエントリーポイント
     └── style.css      # スタイルシート
 ```
+
+**注意**: `firebase.json`ファイルが現在存在しないため、デプロイ前に`firebase.json.backup`から復元する必要があります。
 
 ## 今後の拡張予定
 

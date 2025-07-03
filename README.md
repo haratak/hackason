@@ -85,25 +85,33 @@ graph TB
 - **技術**: Flutter（クロスプラットフォーム対応）
 - **機能**: 
   - 家族・子どもプロフィール管理
-  - 写真・動画の撮影とアップロード
-  - AIが分析したエピソードのタイムライン表示
-  - 週次ノートブックの閲覧と共有
+  - 写真・動画の選択とアップロード（Firebase Storage直接アップロード）
+  - AIが分析したエピソードのタイムライン表示（動画サムネイル対応）
+  - 週次ノートブックの閲覧と共有（WebView表示）
+  - 感情的なタイトルでの思い出表示
+  - 日付ごとのグルーピング機能
 
 ### 2. メディア処理エージェント（Media Processing Agent）
 - **役割**: アップロードされたメディアをAIで分析
-- **技術**: Python + Google ADK + Gemini AI
+- **技術**: Python 3.12 + Google ADK + Gemini 2.5 Flash
 - **機能**:
-  - 年齢に応じた成長観点での分析
+  - 写真・動画から子どもの行動や表情を分析
+  - 年齢に応じた多角的分析（0-6ヶ月、6-12ヶ月、12-24ヶ月、24ヶ月+）
   - 感情的な日本語タイトルの生成
-  - 検索用タグとベクトル埋め込みの作成
+  - 検索用タグとベクトル埋め込みの作成（768次元）
+  - 動画サムネイルの自動生成
+  - Firebase Functions v2対応（HTTPトリガー/Firestoreトリガー）
 
 ### 3. コンテンツジェネレーター（Content Generator）
 - **役割**: 週次ノートブックの自動生成
-- **技術**: Python + Google ADK + Gemini AI
+- **技術**: Python 3.12 + Google ADK + Gemini 1.5 Flash
 - **機能**:
+  - Firestoreトリガーまたは定期実行（毎週日曜朝9時JST）で起動
   - 1週間のエピソードを5つのテーマに整理
   - 親向けの温かい文章生成（200-300文字）
-  - 関連エピソードの自動関連付け
+  - 関連エピソードの自動関連付け（Vertex AI Vector Search使用）
+  - カスタマイズ可能なトーン・フォーカス設定
+  - analysis_resultsコレクションからのメディア収集
 
 ### 4. ダイアリーパブリッシャー（Dairy Publisher）
 - **役割**: 成長記録の新聞風ビューアー（閲覧専用インターフェース）
@@ -112,7 +120,10 @@ graph TB
   - 新聞風レイアウトで5つのトピックを美しく表示
   - URLパラメータベースのルーティング（/children/:childId/notebooks/:notebookId）
   - レスポンシブデザイン（モバイル対応）
-  - Firebase SDKによるリアルタイムデータ取得
+  - Firebase SDK v10.7.1によるリアルタイムデータ取得
+  - 動画サポート（.mov, .mp4, .avi, .wmv, .flv, .webm）
+  - サーバー生成サムネイル表示
+  - gs://形式URLの自動HTTPS変換
   - エラーハンドリングとローディングアニメーション
 
 ### 5. フォトWebアプリ（Photo Web App）※開発中
@@ -133,13 +144,17 @@ graph TB
 ## 技術スタック
 
 - **フロントエンド**: Flutter（モバイル）、HTML/CSS/JS（Web）
-- **バックエンド**: Python 3.12、Google ADK
-- **AI/ML**: Gemini 2.5 Flash、Vertex AI、text-embedding-004
+- **バックエンド**: Python 3.12、Google ADK (Agent Development Kit)
+- **AI/ML**: 
+  - Gemini 2.5 Flash（メディア分析）
+  - Gemini 1.5 Flash（コンテンツ生成）
+  - text-embedding-004（768次元ベクトル化）
 - **インフラ**: Google Cloud Platform
   - Firebase（Auth, Firestore, Storage, Hosting）
-  - Cloud Functions
+  - Firebase Functions v2（Cloud Functions）
   - Vertex AI Vector Search
-- **開発ツール**: Git、Firebase CLI、gcloud CLI
+  - Cloud Storage（サムネイル保存）
+- **開発ツール**: Git、Firebase CLI、gcloud CLI、flutterfire
 
 ## セキュリティとプライバシー
 
@@ -152,12 +167,12 @@ graph TB
 
 - Google Photos連携による自動写真収集
 - Firebase FunctionsによるPDFエクスポート機能
-- Vertex AIを使用した自動要約生成
 - 認証機能の追加（プライベート共有）
 - PWA対応（オフライン閲覧）
 - より高度なAI分析（発達段階の詳細な追跡など）
 - 多言語対応
 - プッシュ通知機能
+- WebViewでのPDFエクスポート機能（モバイルアプリ）
 
 ## プロジェクト構成
 
@@ -179,6 +194,12 @@ hackason/
 - Flutter SDK
 - Google Cloud Platform アカウント
 - Firebase プロジェクト（hackason-464007）
+- Node.js（Firebase CLI用）
+- 必要な環境変数:
+  - `GCP_PROJECT_ID`: hackason-464007
+  - `GCP_LOCATION`: us-central1
+  - `VERTEX_AI_VECTOR_SEARCH_INDEX_ID`
+  - `VERTEX_AI_VECTOR_SEARCH_INDEX_ENDPOINT_ID`
 
 ## ライセンス
 

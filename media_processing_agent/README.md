@@ -130,8 +130,9 @@ sequenceDiagram
   - Google Cloud Platform
   - Vertex AI
   - Cloud Firestore
-  - Cloud Functions
+  - Cloud Functions (Firebase Functions v2)
   - Firebase Storage
+  - Cloud Storage (サムネイル保存)
 
 ## エピソードデータ構造
 
@@ -142,6 +143,7 @@ sequenceDiagram
   "child_age_months": 18,
   "user_id": "user_456",
   "emotional_title": "初めて一人で立った瞬間",
+  "thumbnail_url": "gs://bucket/thumbnails/media_thumb.jpg",
   "episodes": [
     {
       "id": "episode_001",
@@ -150,9 +152,10 @@ sequenceDiagram
       "summary": "つかまらずに3秒間立つことができた",
       "content": "リビングで一人で立ち上がり...",
       "tags": ["立つ", "運動発達", "18ヶ月"],
+      "scene_keywords": ["リビング", "立つ", "バランス"],
       "metadata": {
-        "confidence": 0.95,
-        "emotion_score": 0.8
+        "scene_description": "明るいリビングで子供が立っている",
+        "perspective_type": "developmental"
       }
     }
   ],
@@ -188,16 +191,23 @@ sequenceDiagram
 - Vector Searchへのインデックス登録
 - 検索用メタデータの付与
 
+### 6. 動画サムネイル生成器 (Video Thumbnail Generator)
+- 動画ファイルから自動的に最適なフレームを選択
+- Cloud Storageにサムネイル画像を保存
+- 既存サムネイルの重複生成を防ぐチェック機能
+
 ## Cloud Functions エンドポイント
 
 ### 1. `process_media_upload` (HTTP)
 ```bash
 POST /process_media_upload
 {
+  "doc_id": "upload_123",
   "media_uri": "gs://bucket/path/to/media.jpg",
   "child_id": "child_123",
   "child_age_months": 18,
-  "user_id": "user_456"
+  "user_id": "user_456",
+  "captured_at": "2024-01-14T15:30:00Z"
 }
 ```
 
@@ -214,6 +224,27 @@ POST /generate_notebook
   "end_date": "2024-01-07"
 }
 ```
+
+## 最近の更新内容
+
+### Firebase Functions v2への移行
+- Cloud FunctionsをFirebase Functions v2に移行
+- より柔軟なトリガー設定とメモリ管理が可能に
+
+### 動画サムネイル自動生成機能
+- 動画ファイルアップロード時に自動的にサムネイルを生成
+- 最適なフレームを自動選択し、Cloud Storageに保存
+- タイムライン表示での動画プレビューが可能に
+
+### シーン特定型分析への進化
+- 子供の「成長」ではなく「行動・シーン」に焦点を当てた分析
+- より具体的で検索しやすいタグとキーワードの生成
+- 親が共感しやすい瞬間の記録に特化
+
+### データ構造の拡張
+- `thumbnail_url`: 動画のサムネイルURL
+- `scene_keywords`: シーンを表す具体的なキーワード
+- `captured_at`: メディアの撮影日時（タイムスタンプ）
 
 ## 環境変数
 
@@ -234,12 +265,14 @@ pip install -r requirements.txt
 # ADKエージェントのローカル実行
 adk agents local --project hackason-464007
 
-# Cloud Functionsのデプロイ
+# Firebase Functions v2のデプロイ
 cd functions
-gcloud functions deploy process_media_upload \
-  --runtime python312 \
-  --trigger-http \
-  --allow-unauthenticated
+firebase deploy --only functions
+
+# または個別にデプロイ
+firebase deploy --only functions:process_media_upload
+firebase deploy --only functions:process_media_upload_firestore
+firebase deploy --only functions:generate_notebook_http
 ```
 
 ## 開発とテスト
