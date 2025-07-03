@@ -17,8 +17,7 @@ import json
 # エージェントから必要な関数をインポート
 from agent import (
     analyze_period_and_themes,
-    collect_episodes_by_theme,
-    generate_topic_content,
+    orchestrate_notebook_generation,
     validate_and_save_notebook,
     get_firestore_client
 )
@@ -153,59 +152,29 @@ def generate_notebook_on_create(event: Event[DocumentSnapshot]) -> None:
         analysis_report = analysis_result["report"]
         themes = analysis_report["themes"]
         
-        # 2. 各テーマごとにエピソードを収集してコンテンツを生成
-        topics = []
-        all_episodes_count = 0
+        # 2. orchestrate_notebook_generationを使用してコンテンツを生成
+        orchestration_result = orchestrate_notebook_generation(
+            child_id=child_id,
+            start_date=start_date,
+            end_date=end_date,
+            themes=themes,
+            child_info=child_info,
+            custom_tone=custom_tone,
+            custom_focus=custom_focus,
+            selected_media_ids=selected_analysis_ids  # analysis_idsを渡す
+        )
         
-        # レイアウトタイプの順番
-        layout_types = ["large_photo", "text_only", "small_photo", "medium_photo", "text_only"]
+        if orchestration_result.get("status") != "success":
+            # エラー時はステータスを failed に更新
+            notebook_ref.update({
+                'status': 'failed',
+                'error': orchestration_result.get("error_message", "Failed to generate content"),
+                'processingCompletedAt': firestore.SERVER_TIMESTAMP
+            })
+            return
         
-        for i, theme in enumerate(themes):
-            # エピソードを収集
-            # 注意: selected_analysis_idsを渡す（media_idsではなく）
-            episodes_result = collect_episodes_by_theme(
-                theme_info=theme,
-                child_id=child_id,
-                start_date=start_date,
-                end_date=end_date,
-                selected_media_ids=selected_analysis_ids  # analysis_idsを渡す
-            )
-            
-            if episodes_result.get("status") == "success":
-                episode_count = episodes_result["report"]["episode_count"]
-                all_episodes_count += episode_count
-                
-                # コンテンツを生成
-                content_result = generate_topic_content(
-                    theme_episodes=episodes_result["report"],
-                    child_info=child_info,
-                    topic_layout=layout_types[i],
-                    custom_tone=custom_tone,
-                    custom_focus=custom_focus
-                )
-                
-                if content_result.get("status") == "success":
-                    topics.append(content_result["report"])
-                else:
-                    # エラーの場合はデフォルトコンテンツ
-                    topics.append({
-                        "title": theme["title"],
-                        "subtitle": None,
-                        "content": f"{theme['title']}に関する記録がありませんでした。",
-                        "photo": None,
-                        "caption": None,
-                        "generated": False
-                    })
-            else:
-                # エピソード収集エラーの場合はデフォルトコンテンツ
-                topics.append({
-                    "title": theme["title"],
-                    "subtitle": None,
-                    "content": f"{theme['title']}に関する記録がありませんでした。",
-                    "photo": None,
-                    "caption": None,
-                    "generated": False
-                })
+        topics = orchestration_result["report"]["topics"]
+        all_episodes_count = orchestration_result["report"].get("total_episodes_used", 0)
         
         # エピソードが1つも見つからなかった場合
         if all_episodes_count == 0:
@@ -330,49 +299,25 @@ def generate_weekly_notebooks(req: scheduler_fn.ScheduledEvent) -> None:
                 themes = analysis_report["themes"]
                 notebook_id = analysis_report["notebook_id"]
                 
-                # 各テーマごとにエピソードを収集してコンテンツを生成
-                topics = []
-                all_episodes_count = 0
-                layout_types = ["large_photo", "text_only", "small_photo", "medium_photo", "text_only"]
+                # orchestrate_notebook_generationを使用してコンテンツを生成
+                orchestration_result = orchestrate_notebook_generation(
+                    child_id=child_id,
+                    start_date=start_date,
+                    end_date=end_date,
+                    themes=themes,
+                    child_info=child_info,
+                    custom_tone=None,
+                    custom_focus=None,
+                    selected_media_ids=None
+                )
                 
-                for i, theme in enumerate(themes):
-                    episodes_result = collect_episodes_by_theme(
-                        theme_info=theme,
-                        child_id=child_id,
-                        start_date=start_date,
-                        end_date=end_date
-                    )
-                    
-                    if episodes_result.get("status") == "success":
-                        episode_count = episodes_result["report"]["episode_count"]
-                        all_episodes_count += episode_count
-                        
-                        content_result = generate_topic_content(
-                            theme_episodes=episodes_result["report"],
-                            child_info=child_info,
-                            topic_layout=layout_types[i]
-                        )
-                        
-                        if content_result.get("status") == "success":
-                            topics.append(content_result["report"])
-                        else:
-                            topics.append({
-                                "title": theme["title"],
-                                "subtitle": None,
-                                "content": f"{theme['title']}に関する記録がありませんでした。",
-                                "photo": None,
-                                "caption": None,
-                                "generated": False
-                            })
-                    else:
-                        topics.append({
-                            "title": theme["title"],
-                            "subtitle": None,
-                            "content": f"{theme['title']}に関する記録がありませんでした。",
-                            "photo": None,
-                            "caption": None,
-                            "generated": False
-                        })
+                if orchestration_result.get("status") != "success":
+                    print(f"Failed to generate content for {child_id}: {orchestration_result.get('error_message')}")
+                    error_count += 1
+                    continue
+                
+                topics = orchestration_result["report"]["topics"]
+                all_episodes_count = orchestration_result["report"].get("total_episodes_used", 0)
                 
                 # エピソードが見つかった場合のみ保存
                 if all_episodes_count > 0:

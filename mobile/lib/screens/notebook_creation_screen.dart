@@ -87,10 +87,10 @@ class _NotebookCreationScreenState extends State<NotebookCreationScreen> {
       
       for (final result in results) {
         try {
-          // MediaUploadを取得（mediaUriでmedia_uploadsを検索）
+          // MediaUploadを取得（analysis_resultsのIDでmedia_uploadsを検索）
           final mediaUploadQuery = await _firestore
               .collection('media_uploads')
-              .where('media_uri', isEqualTo: result.mediaUri)
+              .where('media_id', isEqualTo: result.id)
               .limit(1)
               .get();
           

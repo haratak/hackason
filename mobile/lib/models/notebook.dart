@@ -23,24 +23,37 @@ class Notebook {
     required this.missingTopics,
   });
 
+  static DateTime _parseDate(dynamic value) {
+    if (value == null) return DateTime.now();
+    if (value is Timestamp) return value.toDate();
+    if (value is String) return DateTime.parse(value);
+    if (value is DateTime) return value;
+    return DateTime.now();
+  }
+
   factory Notebook.fromJson(Map<String, dynamic> json, String id) {
     return Notebook(
       id: id,
       nickname: json['nickname'] as String? ?? '',
-      date: json['date'] != null
-          ? (json['date'] as Timestamp).toDate()
-          : DateTime.now(),
-      period: NotebookPeriod.fromJson(json['period'] as Map<String, dynamic>? ?? {}),
-      topics: (json['topics'] as List<dynamic>?)
-              ?.map((topic) => NotebookTopic.fromJson(topic as Map<String, dynamic>))
+      date: _parseDate(json['date']),
+      period: NotebookPeriod.fromJson(
+        json['period'] as Map<String, dynamic>? ?? {},
+      ),
+      topics:
+          (json['topics'] as List<dynamic>?)
+              ?.map(
+                (topic) =>
+                    NotebookTopic.fromJson(topic as Map<String, dynamic>),
+              )
               .toList() ??
           [],
-      createdAt: json['created_at'] != null
-          ? (json['created_at'] as Timestamp).toDate()
-          : DateTime.now(),
+      createdAt: _parseDate(json['createdAt']),
       status: _parseStatus(json['status'] as String?),
-      generationStatus: _parseGenerationStatus(json['generation_status'] as String?),
-      missingTopics: (json['missing_topics'] as List<dynamic>?)?.cast<String>() ?? [],
+      generationStatus: _parseGenerationStatus(
+        json['generation_status'] as String?,
+      ),
+      missingTopics:
+          (json['missing_topics'] as List<dynamic>?)?.cast<String>() ?? [],
     );
   }
 
@@ -74,7 +87,7 @@ class Notebook {
       'date': Timestamp.fromDate(date),
       'period': period.toJson(),
       'topics': topics.map((topic) => topic.toJson()).toList(),
-      'created_at': Timestamp.fromDate(createdAt),
+      'createdAt': Timestamp.fromDate(createdAt),
       'status': status.toString().split('.').last,
       'generation_status': generationStatus.toString().split('.').last,
       'missing_topics': missingTopics,
@@ -94,13 +107,17 @@ class NotebookPeriod {
   });
 
   factory NotebookPeriod.fromJson(Map<String, dynamic> json) {
+    // startとendはTimestampまたはISO文字列の可能性がある
+    DateTime parseDate(dynamic value) {
+      if (value == null) return DateTime.now();
+      if (value is Timestamp) return value.toDate();
+      if (value is String) return DateTime.parse(value);
+      return DateTime.now();
+    }
+
     return NotebookPeriod(
-      start: json['start'] != null
-          ? (json['start'] as Timestamp).toDate()
-          : DateTime.now(),
-      end: json['end'] != null
-          ? (json['end'] as Timestamp).toDate()
-          : DateTime.now(),
+      start: parseDate(json['start']),
+      end: parseDate(json['end']),
       days: json['days'] as int? ?? 7,
     );
   }
