@@ -21,19 +21,19 @@
 
 #### 1️⃣ スマホで写真を撮影・アップロード
 
-![モバイルアプリでの写真アップロード画面](https://drive.google.com/uc?export=view&id=1woeuw3zoH9msJyppQ_PqU1-n-OX1rZDP)
+![モバイルアプリでの写真アップロード画面](https://drive.google.com/uc?export=view&id=1woeuw3zoH9msJyppQ_PqU1-n-OX1rZDP =400x)
 
 写真をアップロードするだけで自動で解析され、このようなエピソードタイムラインが自動で作成されます。
 
 #### 2️⃣ AIが自動で分析・物語を生成
 
-![AI分析の様子](https://drive.google.com/uc?export=view&id=1mhaIG-iHNeWdx18Oux0Lp2onDGrtdF3h)
+![AI分析の様子](https://drive.google.com/uc?export=view&id=1mhaIG-iHNeWdx18Oux0Lp2onDGrtdF3h =400x)
 
 解析された写真や動画からノートブックを作成できます。また、対象とする写真や動画を選択することができるので、コンテキストを調整できます。基本的に自動で作成されますが、ユーザーが意図的に作成されたアウトプットの調整をしたい。
 
 #### 3️⃣ 新聞風の成長記録が完成！家族と共有
 
-![作成例](https://drive.google.com/uc?export=view&id=1n3AnMIcf2TQr0EwADegOASxeApay0Px-)
+![作成例](https://drive.google.com/uc?export=view&id=1pjaK6YBxh0ARvnDrH-O9rQrbHlvUvb58)
 
 毎週、その週のハイライトが**新聞風のレイアウト**で自動生成。URLを送るだけで、祖父母も簡単に閲覧できます。
 
