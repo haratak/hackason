@@ -21,15 +21,15 @@
 
 #### 1️⃣ スマホで写真を撮影・アップロード
 
-![モバイルアプリでの写真アップロード画面](https://drive.google.com/uc?export=view&id=YOUR_FILE_ID_HERE)
+![モバイルアプリでの写真アップロード画面](https://drive.google.com/uc?export=view&id=1woeuw3zoH9msJyppQ_PqU1-n-OX1rZDP)
 
-普段通り子どもの写真や動画を撮影。アプリから簡単にアップロードするだけ。タイトルやエピソードはAIが自動で作成。
+写真をアップロードするだけで自動で解析され、このようなエピソードタイムラインが自動で作成されます。
 
 #### 2️⃣ AIが自動で分析・物語を生成
 
-![AI分析の様子](https://drive.google.com/uc?export=view&id=YOUR_FILE_ID_HERE)
+![AI分析の様子](https://drive.google.com/uc?export=view&id=1mhaIG-iHNeWdx18Oux0Lp2onDGrtdF3h)
 
-Gemini 2.5 Flashが写真・動画を分析し、子どもの年齢に応じた視点で成長の瞬間を発見。過去の関連するエピソードとも自動で結びつけます。
+解析された写真や動画からノートブックを作成できます。また、対象とする写真や動画を選択することができるので、コンテキストを調整できます。基本的に自動で作成されますが、ユーザーが意図的に作成されたアウトプットの調整をしたい。
 
 #### 3️⃣ 新聞風の成長記録が完成！家族と共有
 
@@ -118,7 +118,7 @@ graph TB
 - **AI/ML**: Gemini 2.5 Flash、Vertex AI Vector Search、text-embedding-004
 - **エージェント開発**: Google Agent Development Kit (ADK)
 - **サーバーレス基盤**: Cloud Functions、Firebase (Auth/Firestore/Storage/Hosting)
-- **フロントエンド**: Flutter（モバイル）、Vanilla JS（Web閲覧用）
+- **フロントエンド**: Flutter（モバイル）、Firebase Hosting（Web閲覧用）
 
 ## Ⅲ. 技術的な実装のハイライト
 
