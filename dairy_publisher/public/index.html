@@ -243,37 +243,23 @@
             element.style.backgroundImage = '';
             
             if (isVideoFile(mediaUrl)) {
-                // 動画の場合 - サーバー側で生成されたサムネイルを表示
-                // 注: content_generatorが動画の場合はサムネイルURLを渡すようになったため、
-                // このブロックは実際には使われない可能性が高い
-                const img = document.createElement('img');
-                img.src = mediaUrl; // この時点でmediaUrlはサムネイルのはず
-                img.style.width = '100%';
-                img.style.height = '100%';
-                img.style.objectFit = 'cover';
-                img.style.borderRadius = '8px';
-                
-                // 動画アイコンオーバーレイ
-                const overlay = document.createElement('div');
-                overlay.style.position = 'absolute';
-                overlay.style.top = '50%';
-                overlay.style.left = '50%';
-                overlay.style.transform = 'translate(-50%, -50%)';
-                overlay.style.background = 'rgba(0,0,0,0.7)';
-                overlay.style.borderRadius = '50%';
-                overlay.style.padding = '12px';
-                overlay.innerHTML = '▶';
-                overlay.style.color = 'white';
-                overlay.style.fontSize = '24px';
-                overlay.style.zIndex = '10';
+                // 動画の場合 - videoタグで表示
+                const video = document.createElement('video');
+                video.src = mediaUrl;
+                video.style.width = '100%';
+                video.style.height = '100%';
+                video.style.objectFit = 'cover';
+                video.style.borderRadius = '8px';
+                video.controls = true;
+                video.playsInline = true;
+                video.preload = 'metadata';
                 
                 element.style.position = 'relative';
-                element.appendChild(img);
-                element.appendChild(overlay);
+                element.appendChild(video);
                 
-                // 画像読み込み完了後に縦横比をチェック
-                img.onload = function() {
-                    const aspectRatio = this.naturalWidth / this.naturalHeight;
+                // 動画のメタデータ読み込み完了後に縦横比をチェック
+                video.onloadedmetadata = function() {
+                    const aspectRatio = this.videoWidth / this.videoHeight;
                     
                     // 縦長の場合（縦横比が0.8未満）の処理
                     if (aspectRatio < 0.8) {
@@ -286,11 +272,15 @@
                         element.classList.remove('auto-height');
                         element.style.height = ''; // デフォルトの高さに戻す
                     }
+                    
+                    // 最初のフレームをポスターとして設定
+                    video.currentTime = 0.1;
                 };
                 
-                img.onerror = function() {
-                    // エラー時はbackgroundImageで表示
-                    element.style.backgroundImage = `url('${mediaUrl}')`;
+                video.onerror = function() {
+                    console.error('動画の読み込みに失敗しました:', mediaUrl);
+                    // エラー時はプレースホルダーを表示
+                    element.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100%; background: #f0f0f0; color: #666; border-radius: 8px;">動画を読み込めません</div>';
                 };
             } else {
                 // 画像の場合

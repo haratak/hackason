@@ -50,6 +50,7 @@ htmlcov/
 # Firebase service account keys
 **/firebase-adminsdk-*.json
 *firebase-adminsdk*.json
+.firebase/
 
 # Google OAuth credentials
 **/client_secret*.json

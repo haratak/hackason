@@ -21,19 +21,19 @@
 
 #### 1️⃣ スマホで写真を撮影・アップロード
 
-<img width="400" alt="モバイルアプリでの写真アップロード画面" src="">
+![モバイルアプリでの写真アップロード画面](https://drive.google.com/uc?export=view&id=YOUR_FILE_ID_HERE)
 
 普段通り子どもの写真や動画を撮影。アプリから簡単にアップロードするだけ。タイトルやエピソードはAIが自動で作成。
 
 #### 2️⃣ AIが自動で分析・物語を生成
 
-<img width="600" alt="AI分析の様子" src="">
+![AI分析の様子](https://drive.google.com/uc?export=view&id=YOUR_FILE_ID_HERE)
 
 Gemini 2.5 Flashが写真・動画を分析し、子どもの年齢に応じた視点で成長の瞬間を発見。過去の関連するエピソードとも自動で結びつけます。
 
 #### 3️⃣ 新聞風の成長記録が完成！家族と共有
 
-<img src="https://drive.google.com/uc?export=view&id=1n3AnMIcf2TQr0EwADegOASxeApay0Px-" alt="作成例">
+![作成例](https://drive.google.com/uc?export=view&id=1n3AnMIcf2TQr0EwADegOASxeApay0Px-)
 
 毎週、その週のハイライトが**新聞風のレイアウト**で自動生成。URLを送るだけで、祖父母も簡単に閲覧できます。
 
@@ -300,4 +300,4 @@ Dairy Publisherコンポーネントではレスポンシブな新聞風レイ�
 
 技術的にはチャレンジングですが、これこそが「おまかせダイアリー」が目指す次のステージだと考えています。
 
-#aiagentzenn #googlecloud
+#aiagentzenn #googlecloud #aiagenthackathon
