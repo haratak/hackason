@@ -22,6 +22,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from agent import process_media_for_cloud_function
 
+# video_upload_handlerの関数もインポート
+try:
+    from video_upload_handler import generate_thumbnail_on_upload, delete_thumbnail_on_video_delete
+except ImportError:
+    # ファイルが存在しない場合はスキップ
+    generate_thumbnail_on_upload = None
+    delete_thumbnail_on_video_delete = None
+
 # 環境変数
 PROJECT_ID = os.environ.get('GOOGLE_CLOUD_PROJECT', 'hackason-464007')
 

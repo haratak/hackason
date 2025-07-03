@@ -61,7 +61,8 @@ body {
 
 .photo-large {
     width: 100%;
-    height: 200px;
+    min-height: 200px;
+    max-height: 300px;
     background-color: #e8e8e8;
     border: 1px solid #ddd;
     display: flex;
@@ -71,11 +72,14 @@ body {
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    position: relative;
+    overflow: hidden;
 }
 
 .photo-small {
     width: 100%;
-    height: 120px;
+    min-height: 120px;
+    max-height: 180px;
     background-color: #e8e8e8;
     border: 1px solid #ddd;
     display: flex;
@@ -85,11 +89,14 @@ body {
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    position: relative;
+    overflow: hidden;
 }
 
 .photo-medium {
     width: 100%;
-    height: 150px;
+    min-height: 150px;
+    max-height: 250px;
     background-color: #e8e8e8;
     border: 1px solid #ddd;
     display: flex;
@@ -99,6 +106,8 @@ body {
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
+    position: relative;
+    overflow: hidden;
 }
 
 .subtitle {
@@ -145,6 +154,83 @@ body {
     content: '';
     color: #999;
     font-size: 0.9em;
+}
+
+/* 縦画像用のスタイル */
+.vertical-image {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background-color: transparent !important;
+    padding: 10px;
+}
+
+.vertical-image img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    border-radius: 8px;
+}
+
+/* 写真コンテナ内の画像 */
+.photo-large img,
+.photo-small img,
+.photo-medium img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 8px;
+}
+
+/* 縦長画像の場合は自動調整 */
+.photo-large.auto-height,
+.photo-small.auto-height,
+.photo-medium.auto-height {
+    height: auto;
+    min-height: inherit;
+    max-height: inherit;
+}
+
+.photo-large.auto-height img,
+.photo-small.auto-height img,
+.photo-medium.auto-height img {
+    width: 100%;
+    height: auto;
+    max-height: 400px;
+    object-fit: contain;
+}
+
+/* ベストショットセクション用の複数画像表示 */
+.photo-medium.multi-media {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    height: auto;
+    min-height: 150px;
+    padding: 5px;
+}
+
+.photo-medium.multi-media img {
+    width: 100%;
+    height: 140px;
+    object-fit: cover;
+    border-radius: 6px;
+}
+
+/* 動画用のスタイル */
+.photo-large video,
+.photo-small video,
+.photo-medium video {
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.photo-large video:hover + div,
+.photo-small video:hover + div,
+.photo-medium video:hover + div {
+    background: rgba(0,0,0,0.8);
+    transform: translate(-50%, -50%) scale(1.1);
+    transition: all 0.2s ease;
 }
 
 /* ローディング画面 */

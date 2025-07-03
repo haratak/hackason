@@ -126,7 +126,9 @@ class NotebookService {
           notebooks.add(notebook);
           debugPrint('Successfully parsed notebook: ${notebook.id}');
           debugPrint('  Notebook date: ${notebook.date}');
-          debugPrint('  Notebook period: ${notebook.period.start} - ${notebook.period.end}');
+          debugPrint(
+            '  Notebook period: ${notebook.period.start} - ${notebook.period.end}',
+          );
         } catch (parseError, parseStackTrace) {
           debugPrint('=== NOTEBOOK PARSE ERROR ===');
           debugPrint('Document ID: ${doc.id}');
@@ -360,8 +362,10 @@ class NotebookService {
         .doc(childId)
         .collection('notebooks')
         .get();
-    
-    final existingNotebookIds = notebookIdsSnapshot.docs.map((doc) => doc.id).toSet();
+
+    final existingNotebookIds = notebookIdsSnapshot.docs
+        .map((doc) => doc.id)
+        .toSet();
     debugPrint('Found ${existingNotebookIds.length} existing notebooks');
 
     // 過去数週間の情報を生成
@@ -372,11 +376,12 @@ class NotebookService {
 
       // ノートブックIDを生成（バックエンドの実装に合わせる）
       // 形式: {child_id}_{start_date}_notebook
-      final startDateStr = '${weekStart.year}_${weekStart.month.toString().padLeft(2, '0')}_${weekStart.day.toString().padLeft(2, '0')}';
+      final startDateStr =
+          '${weekStart.year}_${weekStart.month.toString().padLeft(2, '0')}_${weekStart.day.toString().padLeft(2, '0')}';
       final expectedNotebookId = '${childId}_${startDateStr}_notebook';
-      
+
       debugPrint('Week $i: expectedNotebookId = $expectedNotebookId');
-      
+
       // ノートブックが存在するかチェック
       final hasNotebook = existingNotebookIds.contains(expectedNotebookId);
 
@@ -414,7 +419,7 @@ class WeekInfo {
   final bool hasNotebook;
   final String? notebookId;
   final List<MediaUpload> weekMedia;
-  
+
   // 遅延読み込み用
   Notebook? _notebook;
   bool _notebookLoaded = false;
@@ -430,14 +435,14 @@ class WeekInfo {
   });
 
   Notebook? get notebook => _notebook;
-  
+
   set notebook(Notebook? value) {
     _notebook = value;
     _notebookLoaded = true;
   }
-  
+
   bool get notebookLoaded => _notebookLoaded;
-  
+
   bool get isCurrentWeek {
     final now = DateTime.now();
     return weekStart.isBefore(now) && weekEnd.isAfter(now);

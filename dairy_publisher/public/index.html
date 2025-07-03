@@ -47,7 +47,7 @@
             <div class="right-column">
                 <div class="section">
                     <div class="section-title" id="topic3-title">　</div>
-                    <div class="photo-small" id="topic3-photo"></div>
+                    <div class="photo-large" id="topic3-photo"></div>
                     <div class="caption" id="topic3-caption">　</div>
                     <div class="text" id="topic3-content">
                         　
@@ -56,7 +56,7 @@
                 
                 <div class="section">
                     <div class="section-title" id="topic4-title">　</div>
-                    <div class="photo-medium" id="topic4-photo"></div>
+                    <div class="photo-large" id="topic4-photo"></div>
                     <div class="caption" id="topic4-caption">　</div>
                 </div>
             </div>
@@ -120,6 +120,213 @@
             return `${year}年${month}月${day}日`;
         }
 
+        // 動画ファイルかどうかをチェック
+        function isVideoFile(url) {
+            if (!url) return false;
+            const videoExtensions = ['.mov', '.mp4', '.avi', '.wmv', '.flv', '.webm'];
+            const lowerUrl = url.toLowerCase();
+            return videoExtensions.some(ext => lowerUrl.includes(ext));
+        }
+
+        // 動画からサムネイル画像を生成
+        function generateVideoThumbnail(videoElement, callback) {
+            try {
+                // 動画のメタデータが読み込まれていることを確認
+                if (videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
+                    console.warn('動画のメタデータが読み込まれていません');
+                    callback(null);
+                    return;
+                }
+                
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // アスペクト比を維持して適切なサイズに設定
+                const maxWidth = 400;
+                const maxHeight = 300;
+                let width = videoElement.videoWidth;
+                let height = videoElement.videoHeight;
+                
+                if (width > maxWidth) {
+                    height = (height * maxWidth) / width;
+                    width = maxWidth;
+                }
+                if (height > maxHeight) {
+                    width = (width * maxHeight) / height;
+                    height = maxHeight;
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                // 動画の現在のフレームをcanvasに描画
+                ctx.drawImage(videoElement, 0, 0, width, height);
+                
+                // canvasの内容をdata URLとして取得（圧縮率を調整）
+                const thumbnailDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                console.log('サムネイル生成完了:', thumbnailDataUrl.substring(0, 50) + '...');
+                callback(thumbnailDataUrl);
+            } catch (error) {
+                console.error('サムネイル生成エラー:', error);
+                callback(null);
+            }
+        }
+
+        // gs://形式のURLをHTTPS形式に変換
+        function convertGsToHttpsUrl(gsUrl) {
+            if (!gsUrl || !gsUrl.startsWith('gs://')) {
+                return gsUrl;
+            }
+            
+            try {
+                // gs://bucket-name/path/to/file の形式をパース
+                const match = gsUrl.match(/^gs:\/\/([^\/]+)\/(.+)$/);
+                if (match) {
+                    const bucket = match[1];
+                    const path = match[2];
+                    // Firebase Storage のHTTPS URLに変換
+                    return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(path)}?alt=media`;
+                }
+            } catch (error) {
+                console.error('gs:// URL変換エラー:', error);
+            }
+            
+            return gsUrl;
+        }
+        
+        // Firebase Storage URLからサムネイル画像のURLを推測
+        function guessVideoThumbnailUrl(videoUrl) {
+            try {
+                // .movや.mp4を.jpgに置き換えてサムネイル画像のURLを推測
+                const thumbnailUrl = videoUrl
+                    .replace(/\.(mov|mp4|avi|wmv|flv|webm)(\?|$)/i, '.jpg$2')
+                    .replace('VID_', 'IMG_'); // 動画ファイルの命名規則に基づく推測
+                
+                return thumbnailUrl;
+            } catch (error) {
+                console.error('サムネイルURL推測エラー:', error);
+                return null;
+            }
+        }
+
+        // WebView判定
+        function isWebView() {
+            const userAgent = navigator.userAgent || '';
+            return /webview|wv|webkit.*mobile/i.test(userAgent.toLowerCase()) || 
+                   (window.webkit && window.webkit.messageHandlers) || false;
+        }
+        
+        // メディアを表示する（写真または動画）
+        function displayMedia(element, mediaUrl) {
+            if (!mediaUrl || !element) return;
+            
+            // gs://形式のURLをHTTPS形式に変換
+            if (mediaUrl.startsWith('gs://')) {
+                mediaUrl = convertGsToHttpsUrl(mediaUrl);
+                console.log('Converted gs:// URL to:', mediaUrl);
+            } else if (!mediaUrl.startsWith('http://') && !mediaUrl.startsWith('https://')) {
+                console.warn('Invalid URL scheme:', mediaUrl);
+                // Firebase Storage URLと仮定して修正を試みる
+                if (mediaUrl.includes('firebasestorage.app')) {
+                    mediaUrl = 'https://' + mediaUrl;
+                } else {
+                    // ファイル名のみの場合はFirebase StorageのURLを構築
+                    const storageUrl = `https://firebasestorage.googleapis.com/v0/b/${firebaseConfig.storageBucket}/o/`;
+                    const encodedPath = encodeURIComponent(mediaUrl);
+                    mediaUrl = `${storageUrl}${encodedPath}?alt=media`;
+                }
+                console.log('Fixed URL:', mediaUrl);
+            }
+            
+            // 既存のコンテンツをクリア
+            element.innerHTML = '';
+            element.style.backgroundImage = '';
+            
+            if (isVideoFile(mediaUrl)) {
+                // 動画の場合 - サーバー側で生成されたサムネイルを表示
+                // 注: content_generatorが動画の場合はサムネイルURLを渡すようになったため、
+                // このブロックは実際には使われない可能性が高い
+                const img = document.createElement('img');
+                img.src = mediaUrl; // この時点でmediaUrlはサムネイルのはず
+                img.style.width = '100%';
+                img.style.height = '100%';
+                img.style.objectFit = 'cover';
+                img.style.borderRadius = '8px';
+                
+                // 動画アイコンオーバーレイ
+                const overlay = document.createElement('div');
+                overlay.style.position = 'absolute';
+                overlay.style.top = '50%';
+                overlay.style.left = '50%';
+                overlay.style.transform = 'translate(-50%, -50%)';
+                overlay.style.background = 'rgba(0,0,0,0.7)';
+                overlay.style.borderRadius = '50%';
+                overlay.style.padding = '12px';
+                overlay.innerHTML = '▶';
+                overlay.style.color = 'white';
+                overlay.style.fontSize = '24px';
+                overlay.style.zIndex = '10';
+                
+                element.style.position = 'relative';
+                element.appendChild(img);
+                element.appendChild(overlay);
+                
+                // 画像読み込み完了後に縦横比をチェック
+                img.onload = function() {
+                    const aspectRatio = this.naturalWidth / this.naturalHeight;
+                    
+                    // 縦長の場合（縦横比が0.8未満）の処理
+                    if (aspectRatio < 0.8) {
+                        element.classList.add('auto-height');
+                        // 高さを自動調整
+                        const containerWidth = element.offsetWidth;
+                        const autoHeight = containerWidth / aspectRatio;
+                        element.style.height = Math.min(autoHeight, 400) + 'px';
+                    } else {
+                        element.classList.remove('auto-height');
+                        element.style.height = ''; // デフォルトの高さに戻す
+                    }
+                };
+                
+                img.onerror = function() {
+                    // エラー時はbackgroundImageで表示
+                    element.style.backgroundImage = `url('${mediaUrl}')`;
+                };
+            } else {
+                // 画像の場合
+                const img = document.createElement('img');
+                img.src = mediaUrl;
+                img.style.width = '100%';
+                img.style.height = '100%';
+                img.style.objectFit = 'cover';
+                img.style.borderRadius = '8px';
+                
+                // 画像読み込み完了後に縦横比をチェック
+                img.onload = function() {
+                    const aspectRatio = this.naturalWidth / this.naturalHeight;
+                    
+                    // 縦長の場合（縦横比が0.8未満）の処理
+                    if (aspectRatio < 0.8) {
+                        element.classList.add('auto-height');
+                        // 高さを自動調整
+                        const containerWidth = element.offsetWidth;
+                        const autoHeight = containerWidth / aspectRatio;
+                        element.style.height = Math.min(autoHeight, 400) + 'px';
+                    } else {
+                        element.classList.remove('auto-height');
+                        element.style.height = ''; // デフォルトの高さに戻す
+                    }
+                };
+                
+                img.onerror = function() {
+                    // エラー時はbackgroundImageで表示
+                    element.style.backgroundImage = `url('${mediaUrl}')`;
+                };
+                
+                element.appendChild(img);
+            }
+        }
+
         // ページ内容を更新
         function updatePageContent(data) {
             // ローディング画面を非表示、コンテンツを表示
@@ -138,16 +345,16 @@
             if (data.topics && data.topics.length >= 5) {
                 // トピック1（左カラム - 写真付き大）
                 const topic1 = data.topics[0];
-                document.getElementById('topic1-title').textContent = topic1.title || '今週の興味';
+                document.getElementById('topic1-title').textContent = topic1.title || '';
                 document.getElementById('topic1-subtitle').textContent = topic1.subtitle || '';
                 document.getElementById('topic1-content').textContent = topic1.content || '';
                 if (topic1.photo) {
-                    document.getElementById('topic1-photo').style.backgroundImage = `url('${topic1.photo}')`;
+                    displayMedia(document.getElementById('topic1-photo'), topic1.photo);
                 }
                 
                 // トピック2（左カラム - テキストのみ）
                 const topic2 = data.topics[1];
-                document.getElementById('topic2-title').textContent = topic2.title || '行った！場所';
+                document.getElementById('topic2-title').textContent = topic2.title || '';
                 document.getElementById('topic2-content').textContent = topic2.content || '';
                 
                 // トピック3（右カラム - 写真付き小）
@@ -156,20 +363,20 @@
                 document.getElementById('topic3-caption').textContent = topic3.caption || '';
                 document.getElementById('topic3-content').textContent = topic3.content || '';
                 if (topic3.photo) {
-                    document.getElementById('topic3-photo').style.backgroundImage = `url('${topic3.photo}')`;
+                    displayMedia(document.getElementById('topic3-photo'), topic3.photo);
                 }
                 
                 // トピック4（右カラム - 写真付き中）
                 const topic4 = data.topics[3];
-                document.getElementById('topic4-title').textContent = topic4.title || '今週のベストショット';
+                document.getElementById('topic4-title').textContent = topic4.title || '';
                 document.getElementById('topic4-caption').textContent = topic4.caption || '';
                 if (topic4.photo) {
-                    document.getElementById('topic4-photo').style.backgroundImage = `url('${topic4.photo}')`;
+                    displayMedia(document.getElementById('topic4-photo'), topic4.photo);
                 }
                 
-                // トピック5（中央セクション）
+                // トピック5（中央セクション - まとめ）
                 const topic5 = data.topics[4];
-                document.getElementById('topic5-title').textContent = topic5.title || 'できるようになったこと';
+                document.getElementById('topic5-title').textContent = topic5.title || 'まとめ';
                 document.getElementById('topic5-content').textContent = topic5.content || '';
             }
         }
@@ -212,6 +419,8 @@
         // ページ読み込み時の処理
         document.addEventListener('DOMContentLoaded', async function() {
             console.log('Page loaded. Current URL:', window.location.href);
+            console.log('User Agent:', navigator.userAgent);
+            console.log('Is WebView:', isWebView());
             const ids = getIdsFromUrl();
             console.log('Extracted IDs:', ids);
             

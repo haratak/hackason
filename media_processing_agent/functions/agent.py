@@ -1,4 +1,4 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timezone
@@ -13,6 +13,7 @@ from vertexai.language_models import TextEmbeddingModel
 import vertexai
 from google.cloud import firestore
 from google.cloud.aiplatform import MatchingEngineIndex
+from google.cloud import storage
 
 # Load environment variables
 load_dotenv()
@@ -154,21 +155,25 @@ def objective_analyzer(media_uri: str) -> dict:
             media_part = Part.from_uri(uri=original_uri, mime_type=mime_type)
 
         prompt = """
-        あなたは、子供の行動を観察する客観的な分析システムです。
-        この画像/動画から観察できる全ての客観的な事実をリストアップしてください。
+        あなたは、写真や動画からシーンを正確に読み取る分析システムです。
+        この画像/動画から観察できる具体的なシーン情報と行動事実をリストアップしてください。
 
-        【厳守事項】
-        - 観察された事実のみを記述し、解釈や感想は含めないでください
-        - 年齢や月齢の推測は行わないでください
-        - JSONのみを返してください
+        【分析の重点】
+        - 子供が「何をしているか」を具体的に特定する
+        - その場の状況や環境を詳しく描写する
+        - 子供の表情や動作を客観的に記録する
+        - 成長や発達の推測は行わず、見たままを記述する
 
+        【出力形式】
         {
-            "all_observed_actions": ["観察された全ての行動のリスト"],
-            "observed_emotions": ["表情から読み取れる感情のリスト"],
-            "spoken_words": ["聞き取れた発話内容（ある場合）"],
-            "environment": "場所や環境の客観的な描写",
-            "physical_interactions": ["物理的な相互作用（触る、持つ、指差すなど）"],
-            "body_movements": ["体の動き（歩く、座る、手を振るなど）"]
+            "scene_description": "その場のシーン全体の描写（場所、時間帯、周りの状況など）",
+            "child_actions": ["子供が行っている具体的な行動のリスト"],
+            "child_expressions": ["観察できる表情や感情表現"],
+            "objects_and_items": ["子供が触れている、使っている、見ている物のリスト"],
+            "environment_details": ["背景、場所、周囲の人や物の詳細"],
+            "body_posture": ["姿勢や体の位置（座っている、立っている、寝ているなど）"],
+            "spoken_or_sounds": ["聞こえる言葉、音、声（ある場合）"],
+            "clothing_and_appearance": ["服装や身に着けているもの"]
         }
         """
 
@@ -231,99 +236,60 @@ def objective_analyzer(media_uri: str) -> dict:
 
 
 def perspective_determiner(facts: Dict[str, Any], child_age_months: int) -> dict:
-    """Determine analysis perspectives based on media type, child age and observed facts"""
+    """Determine analysis perspectives focused on scene identification and action description"""
     model = GenerativeModel(MODEL_NAME)
     try:
         facts_json = json.dumps(facts, ensure_ascii=False, indent=2)
         media_type = facts.get("media_type", "image")
 
-        if media_type == "video":
-            # 動画の場合：多角的な視点（発達、感情、思い出、面白い瞬間など）
-            prompt = f"""
-            あなたは、子供の成長記録を多角的に分析する専門家です。動画から観察される様々な側面を捉えてください。
+        # 動画・写真共通でシーン特定に焦点を当てる
+        prompt = f"""
+        あなたは、子供の行動シーンを特定・分析する専門家です。
+        観察された事実から、このメディアで「子供が何をしているか」を具体的に特定してください。
 
-            【入力情報】
-            メディアタイプ: 動画
-            月齢: {child_age_months}ヶ月
-            観察された事実:
-            {facts_json}
+        【入力情報】
+        メディアタイプ: {media_type}
+        月齢: {child_age_months}ヶ月
+        観察された事実:
+        {facts_json}
 
-            【タスク】
-            動画から観察される内容を基に、以下の観点から最も重要な視点を最大4つ選択してください：
+        【分析の重点】
+        成長や発達ではなく、「そのとき子供が何をしていたか」「どんなシーンか」の特定に焦点を当ててください。
 
-            【分析の観点】
-            1. 発達・成長の視点
-               - 言語発達（発話、理解）
-               - 運動発達（動き、器用さ）
-               - 認知・社会性の発達
+        【分析視点の選択指針】
+        1. **行動の特定**
+           - 子供の具体的な動作や行為
+           - 何をしている最中なのか
+           - どんな遊びや活動をしているか
 
-            2. 感情・思い出の視点
-               - 楽しい瞬間、面白いポイント
-               - 家族や周りの人との関わり
-               - 特別な体験や初めての経験
+        2. **シーンの背景**
+           - どこで起きているシーンか
+           - どんな状況や環境か
+           - 周囲に何があるか
 
-            3. 赤ちゃん特有の視点（該当する月齢の場合）
-               - かわいい仕草や特徴
-               - この時期ならではの行動
-               - 親子の絆を感じる瞬間
+        3. **表情や感情の瞬間**
+           - その時の子供の気持ちや反応
+           - 楽しそう、真剣、驚いているなど
+           - 表情から読み取れるその瞬間の感情
 
-            【出力形式】
-            {{
-                "perspectives": [
-                    {{
-                        "type": "視点名（development, emotional_moment, funny_point, baby_features等）",
-                        "focus": "この視点で注目すべき具体的なポイント",
-                        "reason": "なぜこの視点が重要・特別なのか",
-                        "observable_signs": ["動画から観察された具体的な要素"]
-                    }}
-                ],
-                "analysis_note": "この動画が捉えた瞬間の総合的な意味"
-            }}
-            """
-        else:
-            # 写真の場合：シーン特定と感情・思い出に限定
-            prompt = f"""
-            あなたは、写真から場面や感情を読み取る専門家です。この写真が捉えた瞬間の意味を分析してください。
+        4. **物や人との関わり**
+           - どんな物を使っているか
+           - 誰かと一緒にいるか
+           - 何に注目しているか
 
-            【入力情報】
-            メディアタイプ: 写真
-            月齢: {child_age_months}ヶ月
-            観察された事実:
-            {facts_json}
-
-            【タスク】
-            写真から読み取れるシーン、感情、思い出の観点から分析視点を最大4つまで選択してください。
-            ※写真では発達評価は行わず、その瞬間の情景や感情に焦点を当ててください。
-
-            【視点選択の指針】
-            1. シーンの特定
-               - どんな場所やイベントか（お祭り、公園、家など）
-               - 季節や時期の推測
-               - 背景から読み取れる状況
-
-            2. 感情の瞬間
-               - 表情から読み取れる感情
-               - その瞬間の雰囲気
-               - 楽しさや喜びの表現
-
-            3. 思い出としての価値
-               - 特別な体験や初めての経験
-               - 家族や友達との関わり
-               - 記念すべき瞬間
-
-            【出力形式】
-            {{
-                "perspectives": [
-                    {{
-                        "type": "視点名（scene_context, emotional_moment, special_memory等）",
-                        "focus": "この視点で注目すべき具体的なポイント",
-                        "reason": "なぜこの瞬間が特別なのか",
-                        "observable_signs": ["写真から読み取れる具体的な要素"]
-                    }}
-                ],
-                "analysis_note": "この写真が捉えた瞬間の総合的な意味"
-            }}
-            """
+        【出力形式】
+        {{
+            "perspectives": [
+                {{
+                    "type": "視点名（action_focus, scene_context, emotional_moment, interaction_focus等）",
+                    "focus": "この視点で特定すべき具体的なシーンや行動",
+                    "reason": "なぜこのシーンが興味深いか",
+                    "observable_signs": ["メディアから観察された具体的な要素"]
+                }}
+            ],
+            "analysis_note": "このメディアが捉えたシーンの概要"
+        }}
+        """
 
         prompt += """
         
@@ -379,7 +345,8 @@ def dynamic_multi_analyzer(facts: Dict[str, Any], perspective: Dict[str, Any]) -
         media_type = facts.get("media_type", "image")
 
         prompt = f"""
-        あなたは、指定された視点から子供の瞬間を分析する専門家です。
+        あなたは、子供のシーンや行動を具体的に描写する記録専門家です。
+        観察された事実から、指定された視点で「子供が何をしているか」を具体的に描写してください。
 
         【入力情報】
         メディアタイプ: {media_type}
@@ -388,30 +355,31 @@ def dynamic_multi_analyzer(facts: Dict[str, Any], perspective: Dict[str, Any]) -
         観察された事実:
         {facts_json}
 
-        【タスク】
-        上記の視点から、観察された内容を分析し、親にとって価値のある洞察を提供してください。
+        【分析の重点】
+        成長や発達の評価ではなく、「その瞬間に子供が何をしていたか」「どんなシーンだったか」の具体的な描写に焦点を当ててください。
 
-        【分析の指針】
-        1. 客観的事実に基づいた分析を行う
-        2. {"動画の場合は発達的意義や成長の様子を含める" if media_type == "video" else "写真の場合はその瞬間の情景や感情に焦点を当てる"}
-        3. 親が喜ぶような温かい解釈を心がける
-        4. {"将来の成長への期待を含める" if media_type == "video" else "思い出としての価値を強調する"}
-        5. タグは「楽しい出来事」「成長の記録」「新しい挑戦」「感動の瞬間」など、新聞記事として引っ張りやすいフレーズにする
+        【描写の指針】
+        1. **具体的な行動の記録**: 子供が実際に行っている動作や行為を詳しく描写
+        2. **シーンの情景描写**: その場の雰囲気、環境、状況を生き生きと表現
+        3. **表情や反応の観察**: その瞬間の子供の感情や表情を客観的に記録
+        4. **楽しい瞬間の強調**: そのシーンの面白さや魅力的な点を親しみやすく表現
+        5. **検索しやすいタグ**: 具体的な行動や場面を表すキーワードを生成
 
         【出力形式】
         {{
             "perspective_type": "{perspective['type']}",
-            "title": "この瞬間を表す印象的なタイトル（15文字以内）",
-            "summary": "観察された行動の具体的な描写と、この視点での意味（100文字程度）",
-            "significance": "この視点から見た発達的重要性や親へのメッセージ",
-            "future_outlook": "今後の成長で期待できること",
-            "vector_tags": ["より情緒的で検索しやすいタグを5-8個生成。例：「初めてできた喜びの瞬間」「小さな手で大きな挑戦」「笑顔あふれる成長の一歩」「親子で分かち合う達成感」など、感情と成長が伝わる10-20文字程度のフレーズ"]
+            "title": "そのシーンを表す具体的なタイトル（15文字以内）",
+            "summary": "子供の行動とその時の状況を具体的に描写（100文字程度）",
+            "content": "そのシーンの詳しい描写と、なぜその瞬間が印象的なのかの説明",
+            "scene_keywords": ["そのシーンや行動を表現するキーワード"],
+            "vector_tags": ["具体的な行動や場面を表すタグを5-8個。例：「積み木で遊ぶ時間」「お祭りを楽しむ姿」「水遊びに夢中」「おやつタイムの笑顔」など、行動や場面が分かる10-20文字程度のフレーズ"]
         }}
 
         【注意事項】
-        - 医学的診断や断定的な評価は避ける
-        - 温かみのある表現を使う
-        - 専門用語は最小限にし、分かりやすい言葉を使う
+        - 成長の評価や発達の判断は行わない
+        - 「できるようになった」などの断定的な表現は避ける
+        - その瞬間の楽しさや魅力を中心に描写する
+        - 親が見て「この瞬間素敵だな」と思えるような表現を心がける
         """
 
         response = model.generate_content(prompt)
@@ -479,26 +447,40 @@ def generate_emotional_title(episodes: List[Dict[str, Any]]) -> str:
         model = GenerativeModel(MODEL_NAME)
 
         
+        # エピソードからより詳細な情報を抽出
+        combined_text = "\n".join([
+            f"- {episode.get('summary', '')}" for episode in episodes if episode.get('summary')
+        ])
+        
         prompt = f"""
-この写真が捉えた情景やシーンを表すタイトルを作成してください。
-子供が何をしているかではなく、どんな情景・雰囲気の場面なのかに焦点を当ててください。
+あなたは、子供の日常シーンを魅力的に表現するタイトル作成の専門家です。
+以下の分析結果から、「その瞬間に子供が何をしていたか」を表現する魅力的なタイトルを作成してください。
 
-【観察された要素】
-- 場所: {', '.join(locations[:2]) if locations else '日常の空間'}
-- 行動: {', '.join(actions[:3]) if actions else '遊んでいる'}
-- 雰囲気: {', '.join(emotions[:2]) if emotions else '静かな時間'}
-- 物や環境: {', '.join(objects[:2]) if objects else ''}
+【分析結果の要約】
+{combined_text}
 
-【タイトルの方向性】
-- 「どんなシーン・情景か」を表現する
-- 子供の動作より、その場の雰囲気や情景を捕える
-- シンプルで素直な言葉で表現
+【タイトル作成の重点】
+1. **具体的な行動やシーン**: 子供が何をしているか分かるように
+2. **その場の雰囲気**: 楽しそう、夢中、のんびりなど、その時の様子
+3. **親しみやすさ**: 見る人がほっこりするような表現
 
-【要件】
-- 20文字以内（絵文字含む）
-- 絵文字1個
+【避けるべき表現】
+- 成長や発達を強調する表現（「できるようになった」など）
+- 抽象的すぎる表現
 
-タイトルのみを出力してください。
+【良い例】
+- 「積み木に夢中な午後」
+- 「お祭りを楽しむ笑顔」
+- 「おやつタイムの真剣顔」
+- 「水遊びで大はしゃぎ」
+
+【タイトルの条件】
+- その瞬間の行動やシーンが分かる具体的な表現
+- 15〜20文字程度で、最後に内容に合った絵文字を1つ付ける
+- 親が見て「この瞬間いいな」と思えるような表現
+
+【出力形式】
+タイトルのみ
 """
         
         response = model.generate_content(prompt)
@@ -519,6 +501,7 @@ def save_multi_episode_analysis(
     child_age_months: int = 0,
     user_id: str = "",
     captured_at: datetime = None,
+    thumbnail_url: str = None,
 ) -> dict:
     """Save multiple episodes as nested array in a single media document"""
     try:
@@ -544,17 +527,18 @@ def save_multi_episode_analysis(
             else:
                 ep_data = episode
 
-            # Create abstract episode structure
+            # Create scene-focused episode structure
             episode_entry = {
                 "id": str(uuid.uuid4()),
                 "type": ep_data.get("perspective_type", ep_data.get("type", "general")),
                 "title": ep_data.get("title", ""),
                 "summary": ep_data.get("summary", ""),
-                "content": ep_data.get("content", ep_data.get("significance", "")),
+                "content": ep_data.get("content", ep_data.get("summary", "")),
                 "tags": ep_data.get("vector_tags", ep_data.get("tags", [])),
+                "scene_keywords": ep_data.get("scene_keywords", []),
                 "metadata": {
-                    "future_outlook": ep_data.get("future_outlook", ""),
-                    "significance": ep_data.get("significance", ""),
+                    "scene_description": ep_data.get("scene_description", ""),
+                    "perspective_type": ep_data.get("perspective_type", ""),
                 },
                 "created_at": datetime.now(timezone.utc),
             }
@@ -576,6 +560,10 @@ def save_multi_episode_analysis(
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc),
         }
+        
+        # Add thumbnail URL if provided (for videos)
+        if thumbnail_url:
+            media_data["thumbnail_url"] = thumbnail_url
 
         # Save to Firestore
         media_ref = db.collection("analysis_results").document(media_id)
@@ -714,6 +702,75 @@ def calculate_age_months(birth_date: datetime) -> int:
     return max(0, months)  # Ensure non-negative
 
 
+def generate_video_thumbnail_if_needed(media_uri: str) -> Optional[str]:
+    """
+    動画ファイルのサムネイルが存在しない場合は生成する
+    
+    Args:
+        media_uri: 動画ファイルのURI（gs://またはhttps://）
+        
+    Returns:
+        サムネイルのURL（生成済みまたは新規生成）、失敗時はNone
+    """
+    try:
+        # video_thumbnailモジュールをインポート
+        from video_thumbnail import generate_video_thumbnail, get_thumbnail_path
+        
+        # URIからバケット名とパスを抽出
+        if media_uri.startswith('gs://'):
+            # gs://bucket-name/path/to/file
+            parts = media_uri[5:].split('/', 1)
+            if len(parts) != 2:
+                return None
+            bucket_name, object_path = parts
+        elif 'firebasestorage.googleapis.com' in media_uri or 'firebasestorage.app' in media_uri:
+            # Firebase Storage URLからパスを抽出
+            import urllib.parse
+            parsed = urllib.parse.urlparse(media_uri)
+            path_parts = parsed.path.split('/o/')
+            if len(path_parts) < 2:
+                return None
+            
+            # バケット名を抽出
+            if 'firebasestorage.googleapis.com' in media_uri:
+                bucket_name = parsed.path.split('/')[3]
+            else:
+                bucket_name = parsed.hostname.split('.')[0]
+            
+            # オブジェクトパスを抽出（URLデコード）
+            object_path = urllib.parse.unquote(path_parts[1].split('?')[0])
+        else:
+            logger.warning(f"Unsupported media URI format: {media_uri}")
+            return None
+        
+        # サムネイルのパスを生成
+        thumbnail_path = get_thumbnail_path(object_path)
+        
+        # サムネイルが既に存在するか確認
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        thumbnail_blob = bucket.blob(thumbnail_path)
+        
+        if thumbnail_blob.exists():
+            logger.info(f"Thumbnail already exists: gs://{bucket_name}/{thumbnail_path}")
+            return f"gs://{bucket_name}/{thumbnail_path}"
+        
+        # サムネイルを生成（自動的に最適なフレームを選択）
+        logger.info(f"Generating thumbnail for: {media_uri}")
+        thumbnail_url = generate_video_thumbnail(
+            video_url=media_uri,
+            bucket_name=bucket_name,
+            output_path=thumbnail_path,
+            time_offset=None  # 自動選択モード
+        )
+        
+        return thumbnail_url
+        
+    except Exception as e:
+        logger.error(f"Error in generate_video_thumbnail_if_needed: {str(e)}")
+        return None
+
+
 def get_child_age_months(child_id: str) -> int:
     """Get child's age in months from Firestore"""
     try:
@@ -766,6 +823,13 @@ def process_media_for_cloud_function(
             return facts_result
 
         facts = facts_result.get("report", {})
+        
+        # 動画の場合はサムネイルを生成
+        thumbnail_url = None
+        if facts.get("media_type") == "video":
+            thumbnail_url = generate_video_thumbnail_if_needed(media_uri)
+            if thumbnail_url:
+                logger.info(f"Generated video thumbnail: {thumbnail_url}")
 
         # 2. 月齢に基づいて分析視点を決定
         perspectives_result = perspective_determiner(facts, child_age_months)
@@ -813,6 +877,7 @@ def process_media_for_cloud_function(
             child_age_months=child_age_months,
             user_id=user_id,
             captured_at=captured_at,
+            thumbnail_url=thumbnail_url,  # サムネイルURLを追加
         )
 
         if save_result.get("status") != "success":

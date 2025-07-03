@@ -1,15 +1,13 @@
-import 'dart:async';
-import 'dart:typed_data';
-
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:kids_diary/models/child.dart';
-import 'package:kids_diary/models/media_upload.dart';
 import 'package:kids_diary/models/notebook.dart';
 import 'package:kids_diary/providers/children_provider.dart';
 import 'package:kids_diary/providers/family_provider.dart';
+import 'package:kids_diary/screens/notebook_creation_screen.dart';
+import 'package:kids_diary/screens/notebook_webview_screen.dart';
 import 'package:kids_diary/services/notebook_service.dart';
-import 'package:kids_diary/services/video_thumbnail_service.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -21,32 +19,26 @@ class WeeklyNotebookScreen extends StatefulWidget {
 }
 
 class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final NotebookService _notebookService = NotebookService();
-  final VideoThumbnailService _videoThumbnailService = VideoThumbnailService();
-  List<WeekInfo> _weeks = [];
+  List<QueryDocumentSnapshot> _notebooks = [];
   bool _isLoading = true;
   String? _selectedChildId;
-  StreamSubscription<Set<String>>? _notebookIdSubscription;
-  final Set<String> _generatingNotebooks = {};
-  Set<String> _existingNotebookIds = {};
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadWeeks();
-    });
+    _loadNotebooks();
   }
 
   @override
   void dispose() {
-    _notebookIdSubscription?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadWeeks() async {
+  Future<void> _loadNotebooks() async {
     try {
-      debugPrint('=== _loadWeeks START ===');
+      debugPrint('=== _loadNotebooks START ===');
       setState(() {
         _isLoading = true;
       });
@@ -58,7 +50,7 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
       if (children.isEmpty) {
         debugPrint('No children found, showing empty state');
         setState(() {
-          _weeks = [];
+          _notebooks = [];
           _isLoading = false;
         });
         return;
@@ -66,54 +58,28 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
 
       // 最初の子供を選択（後で変更可能）
       final childId = _selectedChildId ?? children.first.id;
-      debugPrint('Loading weeks for child: $childId');
+      debugPrint('Loading notebooks for child: $childId');
 
-      // ノートブックIDのリアルタイム監視を開始（軽量版）
-      _notebookIdSubscription?.cancel();
-      _notebookIdSubscription = _notebookService
-          .watchChildNotebookIds(childId)
-          .listen(
-            (notebookIds) {
-              debugPrint('Notebook IDs updated: ${notebookIds.length} notebooks');
-              if (mounted) {
-                final previousIds = _existingNotebookIds;
-                _existingNotebookIds = notebookIds;
-                
-                // 新しく追加されたノートブックがある場合のみ再読み込み
-                final newIds = notebookIds.difference(previousIds);
-                if (newIds.isNotEmpty) {
-                  debugPrint('New notebooks detected: $newIds');
-                  
-                  // 新しく作成されたノートブックの生成中フラグをクリア
-                  for (final notebookId in newIds) {
-                    if (_generatingNotebooks.contains(notebookId)) {
-                      setState(() {
-                        _generatingNotebooks.remove(notebookId);
-                      });
-                    }
-                  }
-                  
-                  _loadWeeks(); // 新しいノートブックが追加されたら週リストを再読み込み
-                }
-              }
-            },
-          );
+      // ノートブックを新しい順に取得
+      final notebooksSnapshot = await _firestore
+          .collection('children')
+          .doc(childId)
+          .collection('notebooks')
+          .orderBy('createdAt', descending: true)
+          .get();
 
-      final weeks = await _notebookService.getRecentWeeks(
-        childId: childId,
-      );
-      debugPrint('Loaded ${weeks.length} weeks');
+      debugPrint('Loaded ${notebooksSnapshot.docs.length} notebooks');
 
       if (mounted) {
         setState(() {
-          _weeks = weeks;
+          _notebooks = notebooksSnapshot.docs;
           _selectedChildId = childId;
           _isLoading = false;
         });
-        debugPrint('=== _loadWeeks SUCCESS ===');
+        debugPrint('=== _loadNotebooks SUCCESS ===');
       }
     } catch (e, stackTrace) {
-      debugPrint('=== ERROR in _loadWeeks ===');
+      debugPrint('=== ERROR in _loadNotebooks ===');
       debugPrint('Error type: ${e.runtimeType}');
       debugPrint('Error message: $e');
       debugPrint('Stack trace: $stackTrace');
@@ -135,106 +101,19 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
     }
   }
 
-  Future<void> _generateNotebook(WeekInfo weekInfo) async {
-    if (_selectedChildId == null) {
-      debugPrint('ERROR: _selectedChildId is null in _generateNotebook');
-      return;
-    }
+  Future<void> _navigateToCreationScreen() async {
+    if (_selectedChildId == null) return;
 
-    // weekIdを外側で定義
-    final weekId = _getWeekId(weekInfo.weekStart);
-
-    try {
-      debugPrint('=== _generateNotebook START ===');
-      debugPrint('Child ID: $_selectedChildId');
-      debugPrint('Week start: ${weekInfo.weekStart}');
-      debugPrint('Week title: ${weekInfo.title}');
-
-      // 生成中ダイアログを表示
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Row(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 16),
-              Text('ノートブック生成中...'),
-            ],
-          ),
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => NotebookCreationScreen(
+          childId: _selectedChildId!,
         ),
-      );
+      ),
+    );
 
-      // 生成中フラグを設定
-      setState(() {
-        _generatingNotebooks.add(weekId);
-      });
-
-      debugPrint('Calling generateWeeklyNotebook API...');
-      final response = await _notebookService.generateWeeklyNotebook(
-        childId: _selectedChildId!,
-        weekDate: weekInfo.weekStart,
-      );
-
-      debugPrint('API Response status: ${response.status}');
-      debugPrint('API Response message: ${response.message}');
-      if (response.error != null) {
-        debugPrint('API Response error: ${response.error}');
-      }
-
-      if (mounted) {
-        Navigator.of(context).pop(); // ダイアログを閉じる
-
-        if (response.isSuccess) {
-          debugPrint('Notebook generation SUCCESS');
-          // 成功時のメッセージ
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('ノートブックを作成しました'),
-              backgroundColor: Colors.green,
-            ),
-          );
-
-          // ノートブックは同期的に作成されるので、生成中フラグをクリアして再読み込み
-          setState(() {
-            _generatingNotebooks.remove(weekId);
-          });
-          _loadWeeks();
-        } else {
-          debugPrint('Notebook generation FAILED');
-          // エラー時は生成中フラグをクリア
-          setState(() {
-            _generatingNotebooks.remove(weekId);
-          });
-          // エラー時のメッセージ
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('ノートブックの作成に失敗しました'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-      debugPrint('=== _generateNotebook END ===');
-    } catch (e, stackTrace) {
-      debugPrint('=== ERROR in _generateNotebook ===');
-      debugPrint('Error type: ${e.runtimeType}');
-      debugPrint('Error message: $e');
-      debugPrint('Stack trace: $stackTrace');
-      debugPrint('=== END ERROR ===');
-
-      if (mounted) {
-        Navigator.of(context).pop(); // ダイアログを閉じる
-        setState(() {
-          _generatingNotebooks.remove(weekId);
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('システムエラーが発生しました'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    if (result == true && mounted) {
+      _loadNotebooks();
     }
   }
 
@@ -283,7 +162,7 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('週刊ノートブック'),
+        title: const Text('ノートブック'),
         actions: [
           if (childrenProvider.hasChildren &&
               childrenProvider.children.length > 1)
@@ -292,10 +171,8 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
               onSelected: (childId) {
                 setState(() {
                   _selectedChildId = childId;
-                  _generatingNotebooks
-                      .clear(); // Clear generation status when switching child
                 });
-                _loadWeeks();
+                _loadNotebooks();
               },
               itemBuilder: (context) => childrenProvider.children
                   .map(
@@ -309,9 +186,15 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _loadWeeks,
+        onRefresh: _loadNotebooks,
         child: _buildContent(childrenProvider),
       ),
+      floatingActionButton: childrenProvider.hasChildren
+          ? FloatingActionButton(
+              onPressed: _navigateToCreationScreen,
+              child: const Icon(Icons.auto_awesome),
+            )
+          : null,
     );
   }
 
@@ -322,7 +205,7 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
       );
     }
 
-    if (_weeks.isEmpty) {
+    if (_notebooks.isEmpty) {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -342,7 +225,7 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
             ),
             SizedBox(height: 16),
             Text(
-              '写真をアップロードして\nエピソードが蓄積されると\n週刊ノートブックが作成できます',
+              '右下のボタンから\nノートブックを作成してください',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 16,
@@ -359,332 +242,710 @@ class _WeeklyNotebookScreenState extends State<WeeklyNotebookScreen> {
         ? childrenProvider.getChildById(_selectedChildId!)
         : null;
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _weeks.length,
-      itemBuilder: (context, index) {
-        final week = _weeks[index];
-        return _buildWeekCard(week, selectedChild);
-      },
-    );
-  }
+    // ノートブックを月ごとにグループ化
+    final groupedNotebooks = <String, List<QueryDocumentSnapshot>>{};
+    final monthKeys = <String, DateTime>{};
 
-  Widget _buildWeekCard(WeekInfo week, Child? child) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: week.hasNotebook ? 3 : 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: InkWell(
-        onTap: week.hasNotebook ? () => _viewNotebook(week) : null,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ヘッダー
-              Row(
-                children: [
-                  Icon(
-                    week.hasNotebook ? Icons.menu_book : Icons.book_outlined,
-                    color: week.hasNotebook ? Colors.green : Colors.grey,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      week.title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  if (week.isCurrentWeek)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[100],
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '今週',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.blue[700],
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
+    for (final notebook in _notebooks) {
+      final data = notebook.data()! as Map<String, dynamic>;
+      final period = data['period'] as Map<String, dynamic>?;
 
-              // ステータス
-              if (_generatingNotebooks.contains(
-                _getWeekId(week.weekStart),
-              )) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange[50],
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.orange[700]!,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'ノートブック生成中...',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.orange[700],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ] else if (week.hasNotebook) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green[50],
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.check_circle,
-                        size: 16,
-                        color: Colors.green[700],
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'ノートブック作成済み',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.green[700],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (week.notebook!.topics.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '${week.notebook!.topics.length}個のトピック',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () => _viewNotebook(week),
-                        icon: const Icon(Icons.menu_book, size: 18),
-                        label: const Text('ノートブックを見る'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: Colors.indigo,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.indigo.shade200),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: IconButton(
-                        onPressed: week.notebookId != null 
-                            ? () => _shareNotebookById(week.notebookId!)
-                            : null,
-                        icon: const Icon(Icons.share),
-                        color: Colors.indigo,
-                        tooltip: 'ノートブックを共有',
-                      ),
-                    ),
-                  ],
-                ),
-              ] else if (week.canGenerate && week.hasMedia) ...[
-                Text(
-                  'この週のノートブックを作成できます',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.blue[700],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed:
-                        _generatingNotebooks.contains(
-                          _getWeekId(week.weekStart),
-                        )
-                        ? null
-                        : () => _generateNotebook(week),
-                    icon: const Icon(Icons.auto_awesome),
-                    label: const Text('ノートブック作成'),
-                  ),
-                ),
-              ] else if (!week.hasMedia) ...[
-                const Text(
-                  'この週はまだ写真や動画がありません',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.orange,
-                  ),
-                ),
-              ] else ...[
-                Text(
-                  week.isCurrentWeek
-                      ? '今週はまだ作成できません（週末まで待ってね）'
-                      : 'この期間はノートブックを作成できません',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey,
-                  ),
-                ),
-              ],
-
-              // メディアサムネイル
-              if (week.hasMedia) ...[
-                const SizedBox(height: 12),
-                _buildMediaThumbnails(week.weekMedia),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _viewNotebook(WeekInfo week) async {
-    // ノートブックがまだ読み込まれていない場合は読み込む
-    if (week.hasNotebook && !week.notebookLoaded && week.notebookId != null) {
-      // ローディングを表示
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-      
-      try {
-        // ノートブックの詳細を取得
-        final childId = _selectedChildId!;
-        final notebook = await _notebookService.getNotebook(childId, week.notebookId!);
-        
-        if (mounted) {
-          Navigator.of(context).pop(); // ローディングを閉じる
-          
-          if (notebook != null) {
-            week.notebook = notebook;
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => NotebookDetailScreen(notebook: notebook),
-              ),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('ノートブックが見つかりません'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
+      DateTime periodStart;
+      if (period != null && period['start'] != null) {
+        final startValue = period['start'];
+        if (startValue is Timestamp) {
+          periodStart = startValue.toDate();
+        } else if (startValue is String) {
+          periodStart = DateTime.parse(startValue);
+        } else {
+          periodStart = DateTime.now();
         }
-      } catch (e) {
-        if (mounted) {
-          Navigator.of(context).pop(); // ローディングを閉じる
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('ノートブックの読み込みに失敗しました'),
-              backgroundColor: Colors.red,
+      } else {
+        periodStart = DateTime.now();
+      }
+
+      final monthKey = _getMonthKey(periodStart);
+
+      if (!groupedNotebooks.containsKey(monthKey)) {
+        groupedNotebooks[monthKey] = [];
+        monthKeys[monthKey] = periodStart;
+      }
+      groupedNotebooks[monthKey]!.add(notebook);
+    }
+
+    // 月キーをソート（新しい順）
+    final sortedMonthKeys = groupedNotebooks.keys.toList()
+      ..sort((a, b) {
+        final dateA = monthKeys[a]!;
+        final dateB = monthKeys[b]!;
+        return dateB.compareTo(dateA);
+      });
+
+    return CustomScrollView(
+      slivers: [
+        for (final monthKey in sortedMonthKeys) ...[
+          // 月のセクションヘッダー
+          SliverToBoxAdapter(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                border: Border(
+                  bottom: BorderSide(
+                    color: Colors.grey[300]!,
+                    width: 0.5,
+                  ),
+                ),
+              ),
+              child: Text(
+                monthKey,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[800],
+                ),
+              ),
+            ),
+          ),
+          // その月のノートブック
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final notebook = groupedNotebooks[monthKey]![index];
+                return _buildNotebookItem(notebook, selectedChild);
+              },
+              childCount: groupedNotebooks[monthKey]!.length,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  String _getMonthKey(DateTime date) {
+    final year = date.year;
+    final month = date.month;
+    return '$year年$month月';
+  }
+
+  bool _isVideoFile(String url) {
+    if (url.isEmpty) return false;
+    const videoExtensions = ['.mov', '.mp4', '.avi', '.wmv', '.flv', '.webm', '.m4v'];
+    final urlLower = url.toLowerCase();
+    return videoExtensions.any((ext) => urlLower.contains(ext));
+  }
+
+  Widget _buildStackedThumbnails(List<String> photoUrls) {
+    if (photoUrls.isEmpty) return const SizedBox.shrink();
+    
+    return Stack(
+      children: [
+        // 背景の写真達（最大3枚）
+        ...photoUrls.take(3).toList().asMap().entries.map((entry) {
+          final index = entry.key;
+          final url = entry.value;
+          final offset = index * 4.0;
+          
+          return Positioned(
+            left: offset,
+            top: offset,
+            child: Container(
+              width: 80 - offset,
+              height: 80 - offset,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      color: Colors.grey[300],
+                      child: Icon(
+                        Icons.broken_image,
+                        color: Colors.grey[600],
+                        size: 20,
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
           );
+        }).toList(),
+        
+        // 枚数表示バッジ（3枚以上の場合）
+        if (photoUrls.length > 3)
+          Positioned(
+            right: 0,
+            top: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.indigo,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Text(
+                '+${photoUrls.length - 3}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildNotebookItem(QueryDocumentSnapshot notebook, Child? child) {
+    try {
+      final data = notebook.data()! as Map<String, dynamic>;
+      final status = data['status'] as String? ?? 'requested';
+      
+      // created_atまたはcreatedAtフィールドを柔軟に処理
+      DateTime createdAt;
+      try {
+        final createdAtValue = data['createdAt'];
+        if (createdAtValue is Timestamp) {
+          createdAt = createdAtValue.toDate();
+        } else {
+          createdAt = DateTime.now();
+        }
+      } catch (e) {
+        createdAt = DateTime.now();
+      }
+      
+      final period = data['period'] as Map<String, dynamic>?;
+      
+      // ノートブックから写真を取得（動画ファイルは除外）
+      final photoUrls = <String>[];
+      if (status == 'completed' && data['topics'] != null) {
+        final topics = data['topics'] as List<dynamic>? ?? [];
+        for (final topic in topics) {
+          if (topic is Map<String, dynamic> && topic['photo'] != null) {
+            final photoUrl = topic['photo'] as String;
+            // gs://スキームのURLは変換が必要なのでスキップ
+            // Firebase Storageの直接URLのみを使用し、動画ファイルは除外
+            if (photoUrl.startsWith('https://') && !_isVideoFile(photoUrl)) {
+              photoUrls.add(photoUrl);
+              if (photoUrls.length >= 3) break; // 最大３枚まで
+            }
+          }
         }
       }
-    } else if (week.notebook != null) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => NotebookDetailScreen(notebook: week.notebook!),
+
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(
+            bottom: BorderSide(
+              color: Colors.grey[200]!,
+            ),
+          ),
+        ),
+        child: InkWell(
+          onTap: status == 'completed' ? () => _viewNotebook(notebook) : null,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // モダンなサムネイル（重なり表示）
+                if (photoUrls.isNotEmpty)
+                  Container(
+                    width: 80,
+                    height: 80,
+                    margin: const EdgeInsets.only(right: 12),
+                    child: _buildStackedThumbnails(photoUrls),
+                  ),
+                
+                // コンテンツ
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 期間とステータス
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _getPeriodTitle(period),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          _buildStatusChip(status),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      // 日時
+                      Text(
+                        DateFormat('yyyy/MM/dd HH:mm').format(createdAt),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      // カスタマイズ情報
+                      if (data['customization'] != null) ...[
+                        const SizedBox(height: 8),
+                        _buildCustomizationInfo(
+                          data['customization'] as Map<String, dynamic>,
+                        ),
+                      ],
+                      
+                      // アクションボタン
+                      if (status == 'completed') ...[
+                        const SizedBox(height: 12),
+                        ElevatedButton(
+                          onPressed: () => _viewNotebook(notebook),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.indigo,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            elevation: 2,
+                          ),
+                          child: const Text(
+                            '見る',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ] else if (status == 'failed') ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'ノートブックの作成に失敗しました',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.red[700],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error building notebook item: $e');
+      return Container(
+        padding: const EdgeInsets.all(16),
+        child: const Text('エラー: ノートブックの表示に失敗しました'),
+      );
+    }
+  }
+
+  Widget _buildNotebookCard(QueryDocumentSnapshot notebook, Child? child) {
+    try {
+      final data = notebook.data()! as Map<String, dynamic>;
+
+      // デバッグ: データ構造を確認
+      debugPrint('Notebook ID: ${notebook.id}');
+      debugPrint('Notebook data keys: ${data.keys.toList()}');
+
+      final status = data['status'] as String? ?? 'requested';
+
+      DateTime createdAt;
+      try {
+        final createdAtValue = data['createdAt'];
+        if (createdAtValue is Timestamp) {
+          createdAt = createdAtValue.toDate();
+        } else {
+          debugPrint(
+            'createdAt is not Timestamp: ${createdAtValue.runtimeType}',
+          );
+          createdAt = DateTime.now();
+        }
+      } catch (e) {
+        debugPrint('Error parsing createdAt: $e');
+        createdAt = DateTime.now();
+      }
+      final period = data['period'] as Map<String, dynamic>?;
+
+      // ノートブックから写真を取得
+      final photoUrls = <String>[];
+      if (status == 'completed' && data['topics'] != null) {
+        final topics = data['topics'] as List<dynamic>? ?? [];
+        for (final topic in topics) {
+          if (topic is Map<String, dynamic> && topic['photo'] != null) {
+            photoUrls.add(topic['photo'] as String);
+            if (photoUrls.length >= 3) break; // 最大３枚まで
+          }
+        }
+      }
+
+      return Card(
+        margin: const EdgeInsets.only(bottom: 16),
+        elevation: status == 'completed' ? 3 : 1,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: InkWell(
+          onTap: status == 'completed' ? () => _viewNotebook(notebook) : null,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ヘッダー
+                Row(
+                  children: [
+                    Icon(
+                      _getStatusIcon(status),
+                      color: _getStatusColor(status),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _getPeriodTitle(period),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            DateFormat('yyyy/MM/dd HH:mm').format(createdAt),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _buildStatusChip(status),
+                  ],
+                ),
+
+                // フォトプレビュー
+                if (photoUrls.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 80,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: photoUrls.length,
+                      itemBuilder: (context, index) {
+                        return Container(
+                          width: 80,
+                          height: 80,
+                          margin: EdgeInsets.only(
+                            right: index < photoUrls.length - 1 ? 8 : 0,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            image: DecorationImage(
+                              image: NetworkImage(photoUrls[index]),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+
+                // カスタマイズ情報
+                if (data['customization'] != null) ...[
+                  const SizedBox(height: 12),
+                  _buildCustomizationInfo(
+                    data['customization'] as Map<String, dynamic>,
+                  ),
+                ],
+
+                // アクションボタン
+                if (status == 'completed') ...[
+                  const SizedBox(height: 12),
+                  _buildActionButtons(notebook),
+                ] else if (status == 'failed') ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'ノートブックの作成に失敗しました',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.red[700],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e, stackTrace) {
+      debugPrint('Error building notebook card: $e');
+      debugPrint('Stack trace: $stackTrace');
+      // エラー時は簡単なカードを表示
+      return const Card(
+        margin: EdgeInsets.only(bottom: 16),
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('エラー: ノートブックの表示に失敗しました'),
         ),
       );
     }
   }
 
-  Future<void> _shareNotebook(Notebook notebook) async {
-    try {
-      // Create the web URL for the notebook
-      const baseUrl = 'https://hackason-464007.web.app';
-      final notebookUrl = '$baseUrl/notebooks/${notebook.id}';
-
-      final shareText =
-          '''
-${notebook.nickname}のノートブック
-${_formatDateRange(notebook.period.start, notebook.period.end)}
-
-${notebook.topics.length}個のエピソードが記録されています。
-
-ノートブックを見る：
-$notebookUrl
-''';
-
-      await Share.share(shareText);
-    } catch (e) {
-      debugPrint('Error sharing notebook: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('共有に失敗しました'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'completed':
+        return Icons.menu_book;
+      case 'generating':
+        return Icons.auto_awesome;
+      case 'failed':
+        return Icons.error_outline;
+      default:
+        return Icons.pending;
     }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'completed':
+        return Colors.green;
+      case 'generating':
+        return Colors.orange;
+      case 'failed':
+        return Colors.red;
+      default:
+        return Colors.blue;
+    }
+  }
+
+  String _getPeriodTitle(Map<String, dynamic>? period) {
+    if (period == null) return 'ノートブック';
+
+    // startとendは文字列（ISO形式）またはTimestampの可能性がある
+    DateTime? start;
+    DateTime? end;
+
+    try {
+      final startValue = period['start'];
+      if (startValue is Timestamp) {
+        start = startValue.toDate();
+      } else if (startValue is String) {
+        start = DateTime.parse(startValue);
+      }
+
+      final endValue = period['end'];
+      if (endValue is Timestamp) {
+        end = endValue.toDate();
+      } else if (endValue is String) {
+        end = DateTime.parse(endValue);
+      }
+    } catch (e) {
+      debugPrint('Error parsing period dates: $e');
+    }
+
+    final type = period['type'] as String?;
+
+    if (start == null || end == null) return 'ノートブック';
+
+    if (type == 'week') {
+      return '${DateFormat('M月d日').format(start)}の週';
+    } else if (type == 'month') {
+      return DateFormat('yyyy年M月').format(start);
+    } else {
+      return '${DateFormat('M/d').format(start)} 〜 ${DateFormat('M/d').format(end)}';
+    }
+  }
+
+  Widget _buildStatusChip(String status) {
+    String label;
+    Color bgColor;
+    Color textColor;
+
+    switch (status) {
+      case 'completed':
+        label = '作成済み';
+        bgColor = Colors.green[50]!;
+        textColor = Colors.green[700]!;
+      case 'generating':
+        label = '生成中';
+        bgColor = Colors.orange[50]!;
+        textColor = Colors.orange[700]!;
+      case 'failed':
+        label = '失敗';
+        bgColor = Colors.red[50]!;
+        textColor = Colors.red[700]!;
+      default:
+        label = '処理待ち';
+        bgColor = Colors.blue[50]!;
+        textColor = Colors.blue[700]!;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          color: textColor,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomizationInfo(Map<String, dynamic> customization) {
+    final tone = customization['tone'] as String?;
+    final focus = customization['focus'] as String?;
+
+    if ((tone?.isEmpty ?? true) && (focus?.isEmpty ?? true)) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (tone?.isNotEmpty ?? false) ...[
+          Row(
+            children: [
+              Icon(Icons.palette, size: 16, color: Colors.grey[600]),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  tone!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ],
+        if (focus?.isNotEmpty ?? false) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(
+                Icons.center_focus_strong,
+                size: 16,
+                color: Colors.grey[600],
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  focus!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildActionButtons(QueryDocumentSnapshot notebook) {
+    return Row(
+      children: [
+        Expanded(
+          child: ElevatedButton.icon(
+            onPressed: () => _viewNotebook(notebook),
+            icon: const Icon(Icons.menu_book, size: 18),
+            label: const Text('ノートブックを見る'),
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              backgroundColor: Colors.indigo,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.indigo.shade200),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: IconButton(
+            onPressed: () => _shareNotebookById(notebook.id),
+            icon: const Icon(Icons.share),
+            color: Colors.indigo,
+            tooltip: 'ノートブックを共有',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _viewNotebook(QueryDocumentSnapshot notebookDoc) async {
+    final data = notebookDoc.data()! as Map<String, dynamic>;
+
+    // WebViewで表示
+    const baseUrl = 'https://hackason-464007.web.app';
+    final notebookUrl =
+        '$baseUrl/children/$_selectedChildId/notebooks/${notebookDoc.id}';
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => NotebookWebViewScreen(
+          notebookUrl: notebookUrl,
+          title: data['nickname'] != null
+              ? '${data['nickname']}のノートブック'
+              : 'ノートブック',
+          childId: _selectedChildId,
+          notebookId: notebookDoc.id,
+        ),
+      ),
+    );
   }
 
   Future<void> _shareNotebookById(String notebookId) async {
     try {
       // Create the web URL for the notebook
       const baseUrl = 'https://hackason-464007.web.app';
-      final notebookUrl = '$baseUrl/notebooks/$notebookId';
+      final notebookUrl =
+          '$baseUrl/children/$_selectedChildId/notebooks/$notebookId';
 
-      final shareText = '''
+      final shareText =
+          '''
 ノートブック
 
 ノートブックを見る：
@@ -704,189 +965,15 @@ $notebookUrl
       }
     }
   }
-
-  String _formatDateRange(DateTime start, DateTime end) {
-    return '${start.year}年${start.month}月${start.day}日 〜 ${end.month}月${end.day}日';
-  }
-
-  String _getWeekId(DateTime weekStart) {
-    // バックエンドの実装に合わせてIDを生成
-    // 形式: {child_id}_{start_date}_notebook
-    final startDateStr = '${weekStart.year}_${weekStart.month.toString().padLeft(2, '0')}_${weekStart.day.toString().padLeft(2, '0')}';
-    return '${_selectedChildId}_${startDateStr}_notebook';
-  }
-
-  int _getWeekNumber(DateTime date) {
-    final firstDayOfMonth = DateTime(date.year, date.month);
-    final firstMonday = _getWeekStart(firstDayOfMonth);
-    final targetMonday = _getWeekStart(date);
-
-    final diffInDays = targetMonday.difference(firstMonday).inDays;
-    return (diffInDays ~/ 7) + 1;
-  }
-
-  DateTime _getWeekStart(DateTime date) {
-    final weekday = date.weekday;
-    final daysFromMonday = weekday - 1;
-    return DateTime(
-      date.year,
-      date.month,
-      date.day,
-    ).subtract(Duration(days: daysFromMonday));
-  }
-
-
-  Widget _buildMediaThumbnails(List<MediaUpload> mediaList) {
-    if (mediaList.isEmpty) return const SizedBox.shrink();
-
-    // 最大6個まで表示
-    final displayMedia = mediaList.take(6).toList();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(Icons.photo_library, size: 16, color: Colors.grey),
-            const SizedBox(width: 4),
-            Text(
-              '${mediaList.length}件の写真・動画',
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.grey,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 60,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: displayMedia.length,
-            itemBuilder: (context, index) {
-              final media = displayMedia[index];
-              return Padding(
-                padding: EdgeInsets.only(
-                  right: index < displayMedia.length - 1 ? 8 : 0,
-                ),
-                child: _buildMediaThumbnail(media),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMediaThumbnail(MediaUpload media) {
-    return Container(
-      width: 60,
-      height: 60,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        color: Colors.grey[200],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: FutureBuilder<String>(
-          future: _getDownloadUrl(media),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return Container(
-                color: Colors.grey[200],
-                child: const Center(
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              );
-            }
-
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                if (media.mediaType == MediaType.image)
-                  Image.network(
-                    snapshot.data!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: Colors.grey[300],
-                        child: const Icon(
-                          Icons.broken_image,
-                          color: Colors.grey,
-                        ),
-                      );
-                    },
-                  )
-                else if (media.mediaType == MediaType.video)
-                  FutureBuilder<Uint8List?>(
-                    future: _videoThumbnailService.getThumbnail(snapshot.data!),
-                    builder: (context, thumbnailSnapshot) {
-                      if (thumbnailSnapshot.hasData &&
-                          thumbnailSnapshot.data != null) {
-                        return Image.memory(
-                          thumbnailSnapshot.data!,
-                          fit: BoxFit.cover,
-                        );
-                      } else if (thumbnailSnapshot.hasError) {
-                        return const Icon(Icons.error, color: Colors.red);
-                      } else {
-                        return Container(
-                          color: Colors.grey[300],
-                          child: const Icon(
-                            Icons.video_library,
-                            color: Colors.grey,
-                          ),
-                        );
-                      }
-                    },
-                  )
-                else
-                  const Icon(Icons.insert_drive_file, color: Colors.grey),
-
-                if (media.mediaType == MediaType.video)
-                  const Positioned(
-                    bottom: 4,
-                    right: 4,
-                    child: Icon(
-                      Icons.play_circle_outline,
-                      color: Colors.white,
-                      size: 16,
-                      shadows: [
-                        Shadow(
-                          offset: Offset(1, 1),
-                          blurRadius: 2,
-                          color: Colors.black54,
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Future<String> _getDownloadUrl(MediaUpload mediaUpload) async {
-    try {
-      final storage = FirebaseStorage.instance;
-      final ref = storage.ref(mediaUpload.filePath);
-      return await ref.getDownloadURL();
-    } catch (e) {
-      debugPrint('Error getting download URL: $e');
-      rethrow;
-    }
-  }
 }
 
 class NotebookDetailScreen extends StatelessWidget {
   final Notebook notebook;
+  final String childId;
 
   const NotebookDetailScreen({
     required this.notebook,
+    required this.childId,
     super.key,
   });
 
@@ -900,7 +987,8 @@ class NotebookDetailScreen extends StatelessWidget {
             onPressed: () async {
               try {
                 const baseUrl = 'https://hackason-464007.web.app';
-                final notebookUrl = '$baseUrl/notebooks/${notebook.id}';
+                final notebookUrl =
+                    '$baseUrl/children/$childId/notebooks/${notebook.id}';
 
                 final shareText =
                     '''
@@ -1015,4 +1103,3 @@ $notebookUrl
     );
   }
 }
-

@@ -1,0 +1,5 @@
+specVersion: v1alpha1
+requiredAPIs:
+  - artifactregistry.googleapis.com
+  - cloudbuild.googleapis.com
+  - cloudfunctions.googleapis.com

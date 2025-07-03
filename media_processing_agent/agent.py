@@ -531,27 +531,33 @@ def generate_emotional_title(episodes: List[Dict[str, Any]]) -> str:
         # タイトル生成用のプロンプト作成
         vertexai.init(project=get_project_id(), location=get_location())
         model = GenerativeModel(MODEL_NAME)
+
+        
+        # エピソードからより詳細な情報を抽出
+        combined_text = "\n".join([
+            f"- {episode.get('summary', '')}" for episode in episodes if episode.get('summary')
+        ])
         
         prompt = f"""
-この写真が捉えた情景やシーンを表すタイトルを作成してください。
-子供が何をしているかではなく、どんな情景・雰囲気の場面なのかに焦点を当ててください。
+あなたは、子供の写真を撮る親の気持ちがわかる、共感力の高いアシスタントです。
+以下の分析結果を読んで、「親がなぜこの瞬間を写真に残したかったのか」その理由を推測してください。
+そして、その推測した気持ちを表現する、最もふさわしいタイトルを1つ作成してください。
 
-【観察された要素】
-- 場所: {', '.join(locations[:2]) if locations else '日常の空間'}
-- 行動: {', '.join(actions[:3]) if actions else '遊んでいる'}
-- 雰囲気: {', '.join(emotions[:2]) if emotions else '静かな時間'}
-- 物や環境: {', '.join(objects[:2]) if objects else ''}
+【分析結果の要約】
+{combined_text}
 
-【タイトルの方向性】
-- 「どんなシーン・情景か」を表現する
-- 子供の動作より、その場の雰囲気や情景を捕える
-- シンプルで素直な言葉で表現
+【推測のヒント】
+1. **子供の表情や仕草:** どんなところが可愛い？面白い？
+2. **状況:** 日常と違う特別な点はどこか？（場所、イベント、服装など）
+3. **成長の記録:** 「これができるようになった！」という感動はどこにあるか？
 
-【要件】
-- 20文字以内（絵文字含む）
-- 絵文字1個
+【タイトルの条件】
+- 親の「撮りたかった気持ち」が伝わるようなタイトルにする。
+- 具体的で、情景が目に浮かぶような表現を使う。
+- 15〜20文字程度で、最後に内容に合った絵文字を1つ付ける。
 
-タイトルのみを出力してください。
+【出力形式】
+タイトルのみ
 """
         
         response = model.generate_content(prompt)
@@ -625,9 +631,9 @@ def save_multi_episode_analysis(
             "emotional_title": emotional_title,  # For timeline display
             "episodes": episodes_data,
             "episode_count": len(episodes_data),
+            "captured_at": captured_at if captured_at else datetime.now(timezone.utc),  # Use provided captured_at or current time
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc),
-            "captured_at": captured_at if captured_at else datetime.now(timezone.utc),  # Use provided captured_at or current time
         }
 
         # Save to Firestore
@@ -718,21 +724,23 @@ def index_episodes(
                     
                     # Create datapoint
                     datapoint_id = f"{media_id}_{episode_id}"
-                    datapoint = {
-                        "datapoint_id": datapoint_id,
-                        "feature_vector": embedding_vector,
-                        "restricts": [
-                            {"namespace": "media_id", "allow_list": [media_id]},
-                            {"namespace": "child_id", "allow_list": [child_id]},
-                        ],
-                    }
+                    restricts = [
+                        {"namespace": "media_id", "allow_list": [media_id]},
+                        {"namespace": "child_id", "allow_list": [child_id]},
+                    ]
                     
                     # Add captured_at timestamp if provided
                     if captured_at:
                         captured_at_timestamp = int(captured_at.timestamp())
-                        datapoint["numeric_restricts"] = [
+                        restricts.append(
                             {"namespace": "captured_at", "value_int": captured_at_timestamp}
-                        ]
+                        )
+                    
+                    datapoint = {
+                        "datapoint_id": datapoint_id,
+                        "feature_vector": embedding_vector,
+                        "restricts": restricts,
+                    }
                     
                     # Upsert to index
                     vector_search_index.upsert_datapoints([datapoint])
@@ -910,17 +918,22 @@ def index_media_analysis(
         created_at_timestamp = int(created_at.timestamp())
 
         # Upsert to Vector Search Index
-        # Using restricts field for user-specific filtering and numeric fields for timestamp filtering
+        # Using restricts field for all filtering
+        restricts = [
+            {"namespace": "child_id", "allow_list": [child_id]}
+        ]
+        
+        # Add captured_at timestamp if available
+        restricts.append(
+            {"namespace": "captured_at", "value_int": created_at_timestamp}
+        )
+        
         vector_search_index.upsert_datapoints(
             datapoints=[
                 {
                     "datapoint_id": episode_id,
                     "feature_vector": vector,
-                    "restricts": [{"namespace": "child_id", "allow_list": [child_id]}],
-                    "numeric_restricts": [
-                        {"namespace": "captured_at",  # Changed from created_at to captured_at
-                            "value_int": created_at_timestamp}
-                    ],
+                    "restricts": restricts,
                 }
             ]
         )
